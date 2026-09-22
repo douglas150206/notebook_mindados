@@ -1,0 +1,7 @@
+variante,modelo,acuracia_modelo,acuracia_mercado,diferenca_pp,ic95_inferior_pp,ic95_superior_pp,mcnemar_estatistica,mcnemar_p,so_modelo_acerta,so_mercado_acerta,supera_mercado
+A,Árvore de decisão,0.523774,0.541698,-1.792453,-2.585377,-1.056604,20.21968,7e-06,171,266,False
+A,Regressão logística,0.533208,0.541698,-0.849057,-1.528302,-0.207547,5.920489,0.014966,141,186,False
+A,Floresta aleatória,0.526038,0.541698,-1.566038,-2.301887,-0.867925,17.464935,2.9e-05,151,234,False
+B,Árvore de decisão,0.535849,0.541698,-0.584906,-1.245283,0.018868,3.135889,0.076587,128,159,False
+B,Regressão logística,0.538302,0.541698,-0.339623,-0.792453,0.057075,2.035211,0.153693,62,80,False
+B,Floresta aleatória,0.540377,0.541698,-0.132075,-0.584906,0.264151,0.270677,0.602878,63,70,False

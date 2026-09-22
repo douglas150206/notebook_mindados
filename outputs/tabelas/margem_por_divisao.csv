@@ -1,0 +1,11 @@
+Div,n_partidas,margem_media_pct,margem_mediana_pct,pais,divisao,liga
+D1,6120,6.068,5.997,Alemanha,1ª divisão,Alemanha - Bundesliga
+D2,6116,6.987,6.52,Alemanha,2ª divisão,Alemanha - 2. Bundesliga
+E0,7600,4.849,5.238,Inglaterra,1ª divisão,Inglaterra - Premier League
+E1,11038,5.421,5.636,Inglaterra,2ª divisão,Inglaterra - Championship
+F1,7348,6.36,6.085,França,1ª divisão,França - Ligue 1
+F2,7416,7.727,6.705,França,2ª divisão,França - Ligue 2
+I1,7592,6.104,6.001,Itália,1ª divisão,Itália - Serie A
+I2,8571,7.616,6.647,Itália,2ª divisão,Itália - Serie B
+SP1,7600,6.07,6.027,Espanha,1ª divisão,Espanha - LaLiga
+SP2,9198,7.357,6.579,Espanha,2ª divisão,Espanha - LaLiga 2

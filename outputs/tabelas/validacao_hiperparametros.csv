@@ -1,0 +1,33 @@
+variante,modelo,parametros,log_loss_medio,log_loss_2019/20,log_loss_2020/21,log_loss_2021/22
+A,Árvore de decisão,"{'max_depth': 3, 'min_samples_leaf': 50}",1.007088,1.000166,1.015982,1.005115
+A,Árvore de decisão,"{'max_depth': 3, 'min_samples_leaf': 200}",1.007088,1.000166,1.015982,1.005115
+A,Árvore de decisão,"{'max_depth': 5, 'min_samples_leaf': 50}",1.006762,1.004162,1.014044,1.00208
+A,Árvore de decisão,"{'max_depth': 5, 'min_samples_leaf': 200}",1.006509,1.001943,1.013866,1.003717
+A,Árvore de decisão,"{'max_depth': 8, 'min_samples_leaf': 50}",1.060752,1.039401,1.076495,1.06636
+A,Árvore de decisão,"{'max_depth': 8, 'min_samples_leaf': 200}",1.016793,1.024249,1.016881,1.009248
+A,Árvore de decisão,"{'max_depth': 12, 'min_samples_leaf': 50}",1.15268,1.101191,1.189379,1.167472
+A,Árvore de decisão,"{'max_depth': 12, 'min_samples_leaf': 200}",1.019408,1.02757,1.020188,1.010467
+A,Regressão logística,{'C': 0.01},0.995949,0.99139,1.004225,0.992231
+A,Regressão logística,{'C': 0.1},0.996032,0.991482,1.004382,0.992232
+A,Regressão logística,{'C': 1.0},0.996031,0.99147,1.004423,0.992201
+A,Regressão logística,{'C': 10.0},0.996019,0.991508,1.004413,0.992136
+A,Floresta aleatória,"{'max_depth': 10, 'min_samples_leaf': 20}",0.996989,0.992438,1.003745,0.994784
+A,Floresta aleatória,"{'max_depth': 10, 'min_samples_leaf': 50}",0.997548,0.992899,1.004366,0.995379
+A,Floresta aleatória,"{'max_depth': None, 'min_samples_leaf': 20}",0.997848,0.994007,1.003674,0.995863
+A,Floresta aleatória,"{'max_depth': None, 'min_samples_leaf': 50}",0.997833,0.993727,1.004213,0.995558
+B,Árvore de decisão,"{'max_depth': 3, 'min_samples_leaf': 50}",0.985804,0.988653,0.988619,0.98014
+B,Árvore de decisão,"{'max_depth': 3, 'min_samples_leaf': 200}",0.985804,0.988653,0.988619,0.98014
+B,Árvore de decisão,"{'max_depth': 5, 'min_samples_leaf': 50}",0.98709,0.989415,0.995204,0.97665
+B,Árvore de decisão,"{'max_depth': 5, 'min_samples_leaf': 200}",0.98542,0.988735,0.990538,0.976986
+B,Árvore de decisão,"{'max_depth': 8, 'min_samples_leaf': 50}",1.065539,1.087116,1.105813,1.003688
+B,Árvore de decisão,"{'max_depth': 8, 'min_samples_leaf': 200}",0.995672,0.999611,0.998459,0.988946
+B,Árvore de decisão,"{'max_depth': 12, 'min_samples_leaf': 50}",1.14615,1.174881,1.156653,1.106916
+B,Árvore de decisão,"{'max_depth': 12, 'min_samples_leaf': 200}",0.998134,0.999515,1.002525,0.992362
+B,Regressão logística,{'C': 0.01},0.980409,0.978582,0.985112,0.977534
+B,Regressão logística,{'C': 0.1},0.980487,0.978786,0.985149,0.977525
+B,Regressão logística,{'C': 1.0},0.980527,0.978887,0.985118,0.977577
+B,Regressão logística,{'C': 10.0},0.980526,0.978843,0.985119,0.977617
+B,Floresta aleatória,"{'max_depth': 10, 'min_samples_leaf': 20}",0.982294,0.979089,0.9867,0.981093
+B,Floresta aleatória,"{'max_depth': 10, 'min_samples_leaf': 50}",0.98216,0.979127,0.985935,0.981417
+B,Floresta aleatória,"{'max_depth': None, 'min_samples_leaf': 20}",0.981859,0.978053,0.98703,0.980494
+B,Floresta aleatória,"{'max_depth': None, 'min_samples_leaf': 50}",0.982238,0.979344,0.987024,0.980345

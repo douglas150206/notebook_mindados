@@ -1,0 +1,105 @@
+==============================================================================
+NÚMEROS PARA O RESUMO — JECET 2026
+Eficiência das cotações de apostas esportivas
+Mineração de Dados — ADS, IFSP Câmpus Jacareí
+==============================================================================
+Gerado pela execução do notebook em 22/09/2026 12:54
+Fonte dos dados: Football-Data.co.uk (250 de 250 arquivos via espelho público — ver Decisões e limitações)
+
+------------------------------------------------------------------------------
+1. AMOSTRA
+------------------------------------------------------------------------------
+Ligas principais: E0, SP1, I1, D1, F1 (Inglaterra - Premier League, Espanha - LaLiga, Itália - Serie A, Alemanha - Bundesliga, França - Ligue 1)
+Período analisado: 2005/06 a 2024/25 (20 temporadas)
+Aquecimento (fora da amostra): 2000/01 a 2004/05
+
+N de partidas analisadas (após limpeza) ....... 36.260
+N usado na modelagem ......................... 35.884
+   N de treino (2005/06 a 2021/22) ........... 30.584
+   N de teste  (2022/23 a 2024/25) ........... 5.300
+
+O resumo diz 'cerca de quarenta mil partidas'; o valor apurado é 36.260.
+
+------------------------------------------------------------------------------
+2. FRASE DE RESULTADOS (pronta para o resumo — variante A)
+------------------------------------------------------------------------------
+Na previsão do resultado das partidas, a árvore de decisão alcançou 52,4% de acerto, a regressão logística 53,3% e a floresta aleatória 52,6%, contra 54,2% obtidos ao se adotar apenas o favorito apontado pelas cotações.
+
+Métricas completas da variante A no conjunto de teste:
+   Árvore de decisão      | acurácia  52,38% | log loss 0,99194 | RPS 0,20193
+   Regressão logística    | acurácia  53,32% | log loss 0,98077 | RPS 0,19862
+   Floresta aleatória     | acurácia  52,60% | log loss 0,98286 | RPS 0,19942
+   Mercado (Bet365)       | acurácia  54,17% | log loss 0,96781 | RPS 0,19462
+
+Variante B (complementar — atributos + probabilidades da Bet365):
+   Árvore de decisão      | acurácia  53,58% | log loss 0,97128 | RPS 0,19516
+   Regressão logística    | acurácia  53,83% | log loss 0,96855 | RPS 0,19467
+   Floresta aleatória     | acurácia  54,04% | log loss 0,96854 | RPS 0,19478
+
+------------------------------------------------------------------------------
+3. AFIRMAÇÕES DE 'RESULTADOS INICIAIS'
+------------------------------------------------------------------------------
+[CONFIRMADA] A margem embutida nas cotações varia de maneira consistente entre
+               operadores e divisões.
+   Entre operadores (2012/13–2022/23): de 2,41% (Pinnacle) a 6,51% (Interwetten); amplitude 4,10 p.p.
+   Entre divisões (Bet365): a 2ª divisão tem margem maior em 5 dos 5 países;
+      diferença média (2ª − 1ª) = 1,13 p.p.
+      Alemanha    : 1ª 6,07% | 2ª 6,99% |   0,92 p.p.
+      Espanha     : 1ª 6,07% | 2ª 7,36% |   1,29 p.p.
+      França      : 1ª 6,36% | 2ª 7,73% |   1,37 p.p.
+      Inglaterra  : 1ª 4,85% | 2ª 5,42% |   0,57 p.p.
+      Itália      : 1ª 6,10% | 2ª 7,62% |   1,51 p.p.
+
+[CONFIRMADA] As probabilidades atribuídas aos desfechos menos prováveis
+               tendem a ser superestimadas.
+   (a) Faixas de baixa probabilidade (< 30%) com superestimação significativa: 3 de 3
+             0% a 10%: prevista 7,34% | observada 6,15% [5,42; 6,97]
+            10% a 20%: prevista 15,67% | observada 14,83% [14,27; 15,41]
+            20% a 30%: prevista 26,13% | observada 25,62% [25,20; 26,04]
+   (b) Inclinação da regressão logística sobre o logit: 1,0779 IC 95% [1,0524; 1,1035] (> 1 -> viés)
+   Retorno médio por unidade apostada, por faixa de cotação (Bet365):
+            até 1,5:   -1,68% [-3,03; -0,33] (n = 6.738)
+            1,5 a 2:   -3,89% [-5,39; -2,38] (n = 12.453)
+              2 a 3:   -5,09% [-6,53; -3,64] (n = 22.774)
+              3 a 5:   -7,28% [-8,67; -5,89] (n = 49.290)
+             5 a 10:  -11,67% [-15,37; -7,97] (n = 14.043)
+        acima de 10:  -21,25% [-32,14; -10,37] (n = 3.482)
+
+------------------------------------------------------------------------------
+4. COMPARAÇÃO COM O MERCADO (teste pareado nas mesmas partidas)
+------------------------------------------------------------------------------
+   [A] Árvore de decisão      | diferença  -1,79 p.p. | IC 95% [-2,59; -1,06] | McNemar p = 0,0000 | não supera
+   [A] Regressão logística    | diferença  -0,85 p.p. | IC 95% [-1,53; -0,21] | McNemar p = 0,0150 | não supera
+   [A] Floresta aleatória     | diferença  -1,57 p.p. | IC 95% [-2,30; -0,87] | McNemar p = 0,0000 | não supera
+   [B] Árvore de decisão      | diferença  -0,58 p.p. | IC 95% [-1,25; 0,02] | McNemar p = 0,0766 | não supera
+   [B] Regressão logística    | diferença  -0,34 p.p. | IC 95% [-0,79; 0,06] | McNemar p = 0,1537 | não supera
+   [B] Floresta aleatória     | diferença  -0,13 p.p. | IC 95% [-0,58; 0,26] | McNemar p = 0,6029 | não supera
+
+   Consistência (em quantos dos 15 recortes temporada x liga o modelo
+   supera o mercado):
+      [A] Floresta aleatória     | acurácia: 0/15 | log loss: 1/15
+      [A] Regressão logística    | acurácia: 4/15 | log loss: 1/15
+      [A] Árvore de decisão      | acurácia: 0/15 | log loss: 0/15
+      [B] Floresta aleatória     | acurácia: 6/15 | log loss: 5/15
+      [B] Regressão logística    | acurácia: 4/15 | log loss: 6/15
+      [B] Árvore de decisão      | acurácia: 5/15 | log loss: 5/15
+
+------------------------------------------------------------------------------
+5. SUGESTÃO DE FRASE DE CONCLUSÃO
+------------------------------------------------------------------------------
+Conclui-se que os modelos supervisionados aproximam-se do desempenho do mercado, mas não o superam de forma consistente.
+
+   Base da decisão: distância do melhor modelo para o mercado = 0,85 p.p. (limite adotado: 3,0 p.p.);
+   modelos que superam o mercado com significância: 0;
+   o mercado também é melhor no log loss: sim.
+
+------------------------------------------------------------------------------
+6. VERIFICAÇÃO DE VAZAMENTO
+------------------------------------------------------------------------------
+   Maior acurácia observada: 54,04% (Floresta aleatória, variante B); limite de alarme: 60%
+   Sem alarme. Testes de vazamento (colunas proibidas e recálculo
+   manual das médias móveis) passaram.
+
+==============================================================================
+Tempo total de execução do notebook: 5.8 minutos
+==============================================================================

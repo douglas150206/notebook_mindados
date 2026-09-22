@@ -1,0 +1,91 @@
+variante,modelo,temporada,liga,n,acuracia_modelo,acuracia_mercado,log_loss_modelo,log_loss_mercado,modelo_melhor_acuracia,modelo_melhor_log_loss
+A,Árvore de decisão,2022/23,D1,306,0.506536,0.53268,1.006869,0.996618,False,False
+A,Árvore de decisão,2022/23,E0,375,0.538667,0.557333,0.981262,0.968602,False,False
+A,Árvore de decisão,2022/23,F1,380,0.528947,0.547368,0.982962,0.972572,False,False
+A,Árvore de decisão,2022/23,I1,370,0.516216,0.516216,1.013822,0.992889,False,False
+A,Árvore de decisão,2022/23,SP1,380,0.534211,0.547368,0.991935,0.979746,False,False
+A,Árvore de decisão,2023/24,D1,301,0.524917,0.538206,0.973431,0.94706,False,False
+A,Árvore de decisão,2023/24,E0,375,0.568,0.594667,0.939111,0.913158,False,False
+A,Árvore de decisão,2023/24,F1,306,0.464052,0.509804,1.056428,1.014365,False,False
+A,Árvore de decisão,2023/24,I1,380,0.528947,0.55,0.997634,0.966777,False,False
+A,Árvore de decisão,2023/24,SP1,380,0.534211,0.552632,0.975005,0.947332,False,False
+A,Árvore de decisão,2024/25,D1,301,0.495017,0.511628,1.021849,0.992972,False,False
+A,Árvore de decisão,2024/25,E0,380,0.513158,0.539474,1.017799,0.970758,False,False
+A,Árvore de decisão,2024/25,F1,306,0.53268,0.539216,0.985579,0.960106,False,False
+A,Árvore de decisão,2024/25,I1,380,0.513158,0.528947,0.984488,0.954766,False,False
+A,Árvore de decisão,2024/25,SP1,380,0.539474,0.544737,0.967215,0.95341,False,False
+A,Regressão logística,2022/23,D1,306,0.519608,0.53268,0.995863,0.996618,False,True
+A,Regressão logística,2022/23,E0,375,0.541333,0.557333,0.975573,0.968602,False,False
+A,Regressão logística,2022/23,F1,380,0.539474,0.547368,0.974664,0.972572,False,False
+A,Regressão logística,2022/23,I1,370,0.524324,0.516216,0.996003,0.992889,True,False
+A,Regressão logística,2022/23,SP1,380,0.539474,0.547368,0.990611,0.979746,False,False
+A,Regressão logística,2023/24,D1,301,0.501661,0.538206,0.971959,0.94706,False,False
+A,Regressão logística,2023/24,E0,375,0.581333,0.594667,0.922042,0.913158,False,False
+A,Regressão logística,2023/24,F1,306,0.48366,0.509804,1.04137,1.014365,False,False
+A,Regressão logística,2023/24,I1,380,0.534211,0.55,0.986722,0.966777,False,False
+A,Regressão logística,2023/24,SP1,380,0.539474,0.552632,0.966742,0.947332,False,False
+A,Regressão logística,2024/25,D1,301,0.508306,0.511628,1.015205,0.992972,False,False
+A,Regressão logística,2024/25,E0,380,0.526316,0.539474,0.981712,0.970758,False,False
+A,Regressão logística,2024/25,F1,306,0.555556,0.539216,0.970114,0.960106,True,False
+A,Regressão logística,2024/25,I1,380,0.534211,0.528947,0.968657,0.954766,True,False
+A,Regressão logística,2024/25,SP1,380,0.55,0.544737,0.971916,0.95341,True,False
+A,Floresta aleatória,2022/23,D1,306,0.513072,0.53268,0.994298,0.996618,False,True
+A,Floresta aleatória,2022/23,E0,375,0.528,0.557333,0.973155,0.968602,False,False
+A,Floresta aleatória,2022/23,F1,380,0.526316,0.547368,0.980712,0.972572,False,False
+A,Floresta aleatória,2022/23,I1,370,0.513514,0.516216,1.003708,0.992889,False,False
+A,Floresta aleatória,2022/23,SP1,380,0.544737,0.547368,0.983326,0.979746,False,False
+A,Floresta aleatória,2023/24,D1,301,0.518272,0.538206,0.960417,0.94706,False,False
+A,Floresta aleatória,2023/24,E0,375,0.581333,0.594667,0.926912,0.913158,False,False
+A,Floresta aleatória,2023/24,F1,306,0.470588,0.509804,1.043065,1.014365,False,False
+A,Floresta aleatória,2023/24,I1,380,0.536842,0.55,0.986457,0.966777,False,False
+A,Floresta aleatória,2023/24,SP1,380,0.539474,0.552632,0.965887,0.947332,False,False
+A,Floresta aleatória,2024/25,D1,301,0.478405,0.511628,1.01947,0.992972,False,False
+A,Floresta aleatória,2024/25,E0,380,0.523684,0.539474,0.99929,0.970758,False,False
+A,Floresta aleatória,2024/25,F1,306,0.529412,0.539216,0.977672,0.960106,False,False
+A,Floresta aleatória,2024/25,I1,380,0.523684,0.528947,0.976898,0.954766,False,False
+A,Floresta aleatória,2024/25,SP1,380,0.539474,0.544737,0.96721,0.95341,False,False
+B,Árvore de decisão,2022/23,D1,306,0.535948,0.53268,0.992362,0.996618,True,True
+B,Árvore de decisão,2022/23,E0,375,0.554667,0.557333,0.967712,0.968602,False,True
+B,Árvore de decisão,2022/23,F1,380,0.526316,0.547368,0.969571,0.972572,False,True
+B,Árvore de decisão,2022/23,I1,370,0.494595,0.516216,1.003693,0.992889,False,False
+B,Árvore de decisão,2022/23,SP1,380,0.547368,0.547368,0.980802,0.979746,False,False
+B,Árvore de decisão,2023/24,D1,301,0.548173,0.538206,0.938134,0.94706,True,True
+B,Árvore de decisão,2023/24,E0,375,0.581333,0.594667,0.916674,0.913158,False,False
+B,Árvore de decisão,2023/24,F1,306,0.509804,0.509804,1.017498,1.014365,False,False
+B,Árvore de decisão,2023/24,I1,380,0.552632,0.55,0.969204,0.966777,True,False
+B,Árvore de decisão,2023/24,SP1,380,0.531579,0.552632,0.955317,0.947332,False,False
+B,Árvore de decisão,2024/25,D1,301,0.498339,0.511628,1.007777,0.992972,False,False
+B,Árvore de decisão,2024/25,E0,380,0.526316,0.539474,0.973373,0.970758,False,False
+B,Árvore de decisão,2024/25,F1,306,0.552288,0.539216,0.968622,0.960106,True,False
+B,Árvore de decisão,2024/25,I1,380,0.539474,0.528947,0.952532,0.954766,True,True
+B,Árvore de decisão,2024/25,SP1,380,0.531579,0.544737,0.969339,0.95341,False,False
+B,Regressão logística,2022/23,D1,306,0.535948,0.53268,0.998964,0.996618,True,False
+B,Regressão logística,2022/23,E0,375,0.554667,0.557333,0.970821,0.968602,False,False
+B,Regressão logística,2022/23,F1,380,0.547368,0.547368,0.972834,0.972572,False,False
+B,Regressão logística,2022/23,I1,370,0.505405,0.516216,0.998574,0.992889,False,False
+B,Regressão logística,2022/23,SP1,380,0.528947,0.547368,0.977808,0.979746,False,True
+B,Regressão logística,2023/24,D1,301,0.531561,0.538206,0.946484,0.94706,False,True
+B,Regressão logística,2023/24,E0,375,0.594667,0.594667,0.908505,0.913158,False,True
+B,Regressão logística,2023/24,F1,306,0.506536,0.509804,1.019788,1.014365,False,False
+B,Regressão logística,2023/24,I1,380,0.542105,0.55,0.965753,0.966777,False,True
+B,Regressão logística,2023/24,SP1,380,0.547368,0.552632,0.952514,0.947332,False,False
+B,Regressão logística,2024/25,D1,301,0.51495,0.511628,0.995664,0.992972,True,False
+B,Regressão logística,2024/25,E0,380,0.534211,0.539474,0.972203,0.970758,False,False
+B,Regressão logística,2024/25,F1,306,0.526144,0.539216,0.95963,0.960106,False,True
+B,Regressão logística,2024/25,I1,380,0.539474,0.528947,0.948907,0.954766,True,True
+B,Regressão logística,2024/25,SP1,380,0.55,0.544737,0.95503,0.95341,True,False
+B,Floresta aleatória,2022/23,D1,306,0.526144,0.53268,0.988765,0.996618,False,True
+B,Floresta aleatória,2022/23,E0,375,0.565333,0.557333,0.964337,0.968602,True,True
+B,Floresta aleatória,2022/23,F1,380,0.531579,0.547368,0.97604,0.972572,False,False
+B,Floresta aleatória,2022/23,I1,370,0.516216,0.516216,0.996643,0.992889,False,False
+B,Floresta aleatória,2022/23,SP1,380,0.55,0.547368,0.968999,0.979746,True,True
+B,Floresta aleatória,2023/24,D1,301,0.541528,0.538206,0.942816,0.94706,True,True
+B,Floresta aleatória,2023/24,E0,375,0.592,0.594667,0.915595,0.913158,False,False
+B,Floresta aleatória,2023/24,F1,306,0.503268,0.509804,1.021735,1.014365,False,False
+B,Floresta aleatória,2023/24,I1,380,0.55,0.55,0.966057,0.966777,False,True
+B,Floresta aleatória,2023/24,SP1,380,0.544737,0.552632,0.952247,0.947332,False,False
+B,Floresta aleatória,2024/25,D1,301,0.511628,0.511628,0.998711,0.992972,False,False
+B,Floresta aleatória,2024/25,E0,380,0.536842,0.539474,0.975397,0.970758,False,False
+B,Floresta aleatória,2024/25,F1,306,0.542484,0.539216,0.960708,0.960106,True,False
+B,Floresta aleatória,2024/25,I1,380,0.531579,0.528947,0.955603,0.954766,True,False
+B,Floresta aleatória,2024/25,SP1,380,0.547368,0.544737,0.958084,0.95341,True,False
