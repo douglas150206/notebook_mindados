@@ -59,15 +59,22 @@ funciona como cache e nada é baixado de novo.
 ├── README.md                  este arquivo
 ├── requirements.txt           versões fixadas
 ├── mineracao_bets.ipynb       notebook principal (executado, com saídas salvas)
+├── brasileirao_2026.ipynb     notebook complementar do Brasileirão 2026
 ├── src/
-│   └── utils.py               download, limpeza, Elo, médias móveis, métricas
+│   ├── utils.py               download, limpeza, Elo, médias móveis, métricas
+│   └── utils_brasileirao.py   modelo de gols (Poisson/Dixon-Coles) e cálculo de green
 ├── data/
 │   ├── raw/                   CSVs baixados (cache; 10 divisões x 25 temporadas)
+│   │   └── brasileirao/       arquivo único do Brasileirão (cache)
 │   └── processed/             bases intermediárias
 └── outputs/
     ├── figuras/               PNG a 150 dpi, títulos e eixos em português
     ├── tabelas/               CSVs com métricas e agregados
-    └── resultados_resumo.txt  números prontos para o resumo
+    ├── resultados_resumo.txt  números prontos para o resumo
+    └── brasileirao/           saídas do notebook do Brasileirão
+        ├── figuras/
+        ├── tabelas/
+        └── resumo_brasileirao_2026.txt
 ```
 
 ## Dados
@@ -137,6 +144,42 @@ Todas em `outputs/`, criadas pela execução:
   por temporada.
 * **`tabelas/`** — cobertura, margens, calibração, retorno, métricas dos
   modelos, comparação com o mercado, consistência e verificações de vazamento.
+
+## Notebook complementar: Brasileirão Série A 2026
+
+`brasileirao_2026.ipynb` aplica a mesma disciplina metodológica ao campeonato
+brasileiro e responde a duas perguntas práticas. Roda em **menos de 1 minuto**.
+
+```bash
+jupyter nbconvert --to notebook --execute --inplace brasileirao_2026.ipynb \
+  --ExecutePreprocessor.timeout=1800
+```
+
+**1. O que deve acontecer nas partidas que faltam.** Um modelo de **Poisson com
+correção de Dixon-Coles**, ponderado no tempo, estima ataque e defesa de cada
+clube e devolve, para cada confronto: gols esperados dos dois lados, placar mais
+provável, probabilidade de vitória/empate/derrota, mais de 2,5 gols e ambas as
+equipes marcarem. As **partidas restantes são deduzidas do formato do
+campeonato** (turno e returno com 20 clubes = 380 confrontos), sem precisar de
+tabela externa. Uma simulação de Monte Carlo com 10 mil repetições projeta a
+classificação final, com chances de título, G4 e Z4.
+
+**2. A chance de voltar *green* em cada cotação.** A análise separa duas
+perguntas que costumam ser confundidas: quanto voltou green historicamente em
+cada faixa de cotação, e o que a probabilidade do modelo diz sobre uma aposta
+específica. A conclusão é que **a cotação não muda a chance de green** — ela
+muda o preço pago por essa chance.
+
+> **Escopo.** A base do Brasileirão traz apenas gols, resultado e cotações de
+> fechamento do mercado 1X2. **Não há finalizações, escanteios nem cartões**,
+> então esses não são previstos. Também não há cotações de over/under nem de
+> ambas marcam para confrontar com as previsões desses mercados.
+
+> **Aviso.** O notebook mede eficiência de mercado; não é um sistema de apostas.
+> Os resultados mostram retorno esperado negativo em todas as faixas de cotação,
+> inclusive apostando apenas onde o modelo enxerga vantagem — filtrar por valor
+> esperado **piora** o retorno, porque quando o modelo discorda muito do mercado
+> em geral quem está errado é o modelo.
 
 ## Reprodutibilidade
 

@@ -13,3 +13,7 @@ data/processed/*
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+
+# Cache do Brasileirão (arquivo único, baixado pelo notebook)
+data/raw/brasileirao/*
+!data/raw/brasileirao/.gitkeep

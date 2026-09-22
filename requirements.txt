@@ -23,3 +23,7 @@ requests==2.32.3
 jupyter==1.1.1
 nbconvert==7.16.4
 ipykernel==6.29.5
+
+# Usado pelo notebook do Brasileirão (otimização do rho de Dixon-Coles e
+# distribuição de Poisson); já vem como dependência do scikit-learn.
+scipy==1.17.1

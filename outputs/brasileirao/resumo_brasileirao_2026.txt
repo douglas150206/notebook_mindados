@@ -1,0 +1,114 @@
+==============================================================================
+BRASILEIRÃO SÉRIE A 2026 — PREVISÕES E ANÁLISE DE GREEN
+Mineração de Dados — ADS, IFSP Câmpus Jacareí
+==============================================================================
+Gerado em 22/09/2026 13:45
+Dados até 2026-09-20 | origem: espelho
+
+------------------------------------------------------------------------------
+1. SITUAÇÃO DO CAMPEONATO
+------------------------------------------------------------------------------
+Partidas disputadas : 277 de 380
+Partidas restantes  : 103
+Líder               : Flamengo RJ (60 pontos)
+
+------------------------------------------------------------------------------
+2. O MODELO
+------------------------------------------------------------------------------
+Poisson com correção de Dixon-Coles, ponderado no tempo.
+   meia-vida escolhida por validação : 730 dias
+   correção de placar baixo (rho)    : 0,0117
+   vantagem de mando                 : o mandante marca 40,2% a mais
+   partidas usadas no ajuste         : 5596
+
+Desempenho fora da amostra (4076 partidas, 2016-2026):
+   Modelo de gols (Poisson/Dixon-Coles)   acurácia 48,85% | log loss 1,03099 | RPS 0,21076
+   Mercado (cotação de fechamento)        acurácia 51,25% | log loss 0,99825 | RPS 0,20050
+   Sempre mandante                        acurácia 47,77% | log loss não se aplica | RPS 0,38629
+
+Calibração dos mercados de gols (previsto x observado):
+   Vitória do mandante        previsto 47,69% | observado 47,77% | viés -0,08 p.p. (calibrado)
+   Empate                     previsto 25,98% | observado 27,21% | viés -1,22 p.p. (calibrado)
+   Mais de 2,5 gols           previsto 41,97% | observado 43,57% | viés -1,61 p.p. (VIESADO)
+   Ambas as equipes marcam    previsto 44,58% | observado 48,75% | viés -4,17 p.p. (VIESADO)
+
+------------------------------------------------------------------------------
+3. CHANCE DE GREEN POR FAIXA DE COTAÇÃO
+------------------------------------------------------------------------------
+Média de mercado, cotação de fechamento, 2012 a 2026.
+
+          faixa  apostas    green  implícita   retorno
+        até 1,5      692   70,66%     72,96%    -3,30%
+        1,5 a 2     2249   56,74%     57,70%    -1,65%
+          2 a 3     4013   39,42%     40,45%    -2,61%
+          3 a 5     8009   24,95%     28,32%   -12,46%
+         5 a 10     1703   14,33%     15,98%   -10,90%
+    acima de 10      122    5,74%      8,32%   -31,83%
+
+   Em todas as faixas a taxa de green fica ABAIXO da probabilidade
+   implícita, e o retorno médio é NEGATIVO. A diferença cresce nas
+   cotações altas (viés favorito-azarão).
+
+   A chance de green de um desfecho é a probabilidade dele acontecer —
+   a cotação não altera essa chance, altera o preço pago por ela.
+   Cotação de equilíbrio = 1 / probabilidade.
+
+------------------------------------------------------------------------------
+4. DÁ PARA GANHAR APOSTANDO ONDE O MODELO VÊ VANTAGEM?
+------------------------------------------------------------------------------
+          Apostar em tudo | n = 12228 | green 33,3% | retorno -7,88% [-10,50; -5,26]
+           Só com VE > 0% | n =  4217 | green 27,0% | retorno -12,33% [-17,30; -7,36]
+           Só com VE > 5% | n =  3374 | green 25,6% | retorno -13,64% [-19,32; -7,96]
+          Só com VE > 10% | n =  2724 | green 24,1% | retorno -14,50% [-20,99; -8,00]
+          Só com VE > 20% | n =  1824 | green 20,9% | retorno -17,54% [-25,84; -9,23]
+
+   NÃO. Exigir mais valor esperado PIORA o retorno. Quando o modelo
+   discorda muito do mercado, em geral quem está errado é o modelo.
+
+------------------------------------------------------------------------------
+5. PREVISÃO DAS PARTIDAS RESTANTES
+------------------------------------------------------------------------------
+103 partidas previstas em outputs/brasileirao/tabelas/previsoes_partidas_restantes.csv
+   gols esperados por jogo : 2,60
+   vitória do mandante     : 47,5%
+   empate                  : 24,6%
+   vitória do visitante    : 27,9%
+
+------------------------------------------------------------------------------
+6. COMO DEVE TERMINAR (10000 simulações)
+------------------------------------------------------------------------------
+               time  pts final   título      G4      Z4
+        Flamengo RJ       79,3    68,8%  100,0%    0,0%
+          Palmeiras       76,8    31,1%  100,0%    0,0%
+       Athletico-PR       63,5     0,1%   69,6%    0,0%
+         Fluminense       63,1     0,0%   62,0%    0,0%
+           Cruzeiro       60,1     0,0%   34,4%    0,0%
+              Bahia       58,7     0,0%   19,6%    0,0%
+        Atletico-MG       56,1     0,0%    9,7%    0,0%
+          Sao Paulo       52,1     0,0%    1,8%    0,8%
+         Bragantino       51,4     0,0%    1,2%    1,0%
+        Botafogo RJ       51,3     0,0%    0,6%    1,4%
+             Santos       51,4     0,0%    1,1%    1,5%
+           Coritiba       47,8     0,0%    0,0%    7,2%
+           Mirassol       46,3     0,0%    0,0%   16,6%
+            Vitoria       45,1     0,0%    0,0%   22,4%
+        Corinthians       45,0     0,0%    0,0%   23,2%
+              Vasco       44,4     0,0%    0,0%   28,1%
+             Gremio       42,3     0,0%    0,0%   48,5%
+      Internacional       42,2     0,0%    0,0%   51,4%
+               Remo       33,6     0,0%    0,0%   98,0%
+     Chapecoense-SC       27,3     0,0%    0,0%   99,9%
+
+   Favorito ao título: Flamengo RJ (68,8%)
+
+==============================================================================
+AVISO
+==============================================================================
+Este é um trabalho de análise de dados sobre eficiência de mercado.
+Os números acima mostram que o retorno esperado é negativo em todas as
+faixas de cotação, inclusive apostando apenas onde o modelo enxerga
+vantagem. Nenhuma previsão deste notebook deve ser lida como
+recomendação de aposta.
+
+Tempo de execução: 0.3 minutos
+==============================================================================

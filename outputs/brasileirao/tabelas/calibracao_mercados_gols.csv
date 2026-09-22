@@ -1,0 +1,5 @@
+mercado,previsto_medio,observado,obs_ic95_inferior,obs_ic95_superior,vies_pp,calibrado
+Vitória do mandante,0.476901,0.477674,0.462368,0.493023,-0.07728,True
+Empate,0.259845,0.27208,0.258637,0.285953,-1.223541,True
+"Mais de 2,5 gols",0.419657,0.435721,0.420566,0.450997,-1.606465,False
+Ambas as equipes marcam,0.445798,0.487488,0.472162,0.502838,-4.168955,False

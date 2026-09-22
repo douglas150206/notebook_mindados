@@ -1,0 +1,4 @@
+previsor,acuracia,log_loss,rps
+Modelo de gols (Poisson/Dixon-Coles),0.488469,1.030985,0.210759
+Mercado (cotação de fechamento),0.512512,0.998252,0.200502
+Sempre mandante,0.477674,,0.386286
