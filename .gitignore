@@ -1,0 +1,15 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Cache de dados: os CSVs são baixados pelo notebook na primeira execução.
+# São ~28 MB regeneráveis, por isso ficam fora do controle de versão.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Artefatos do Python e do Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
