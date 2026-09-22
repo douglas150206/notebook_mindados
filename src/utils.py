@@ -127,9 +127,33 @@ class RegistroDownload:
     """Uma linha do relatório de coleta."""
     divisao: str
     temporada: str
-    situacao: str          # 'cache', 'oficial', 'espelho' ou 'falhou'
+    situacao: str          # 'cache', 'baixado' ou 'falhou'
+    origem: str = "desconhecida"   # 'oficial', 'espelho' ou 'desconhecida'
     bytes_arquivo: int = 0
     detalhe: str = ""
+
+
+# Manifesto com a origem de cada arquivo já baixado. Sem ele, um cache cheio
+# faria o relatório afirmar "acesso direto" sem nunca ter falado com a fonte
+# oficial — exatamente o tipo de alegação que este projeto não pode fazer.
+ARQUIVO_ORIGENS = DIR_BRUTO / "_origens.json"
+
+
+def _carregar_origens() -> dict[str, str]:
+    import json
+    if ARQUIVO_ORIGENS.exists():
+        try:
+            return json.loads(ARQUIVO_ORIGENS.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return {}
+    return {}
+
+
+def _gravar_origens(origens: dict[str, str]) -> None:
+    import json
+    ARQUIVO_ORIGENS.write_text(
+        json.dumps(origens, indent=2, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8")
 
 
 def _baixar_url(url: str, tempo_limite: int = 60) -> bytes:
@@ -161,13 +185,16 @@ def baixar_temporadas(
     estado = {"oficial_ok": usar_oficial, "motivo_oficial": ""}
     pendentes: list[tuple[str, str]] = []
     registros: list[RegistroDownload] = []
+    origens = _carregar_origens()
 
     for divisao in divisoes:
         for temporada in temporadas:
-            destino = DIR_BRUTO / f"{divisao}_{temporada}.csv"
+            nome = f"{divisao}_{temporada}.csv"
+            destino = DIR_BRUTO / nome
             if destino.exists() and destino.stat().st_size > 200:
                 registros.append(RegistroDownload(
-                    divisao, temporada, "cache", destino.stat().st_size))
+                    divisao, temporada, "cache",
+                    origens.get(nome, "desconhecida"), destino.stat().st_size))
             else:
                 pendentes.append((divisao, temporada))
 
@@ -190,26 +217,41 @@ def baixar_temporadas(
                 dados = _baixar_url(
                     URL_OFICIAL.format(temporada=temporada, divisao=divisao))
                 destino.write_bytes(dados)
-                return RegistroDownload(divisao, temporada, "oficial", len(dados))
+                return RegistroDownload(divisao, temporada, "baixado",
+                                        "oficial", len(dados))
             except Exception as erro:
                 erros.append(f"oficial: {type(erro).__name__}")
         try:
             dados = _baixar_url(URL_ESPELHO.format(
                 pasta=PASTA_ESPELHO[divisao], temporada=temporada))
             destino.write_bytes(dados)
-            return RegistroDownload(divisao, temporada, "espelho", len(dados))
+            return RegistroDownload(divisao, temporada, "baixado",
+                                    "espelho", len(dados))
         except Exception as erro:
             erros.append(f"espelho: {type(erro).__name__}: {str(erro)[:80]}")
-        return RegistroDownload(divisao, temporada, "falhou", 0, "; ".join(erros))
+        return RegistroDownload(divisao, temporada, "falhou", "nenhuma", 0,
+                                "; ".join(erros))
 
     if pendentes:
         with cf.ThreadPoolExecutor(max_threads) as executor:
-            registros.extend(executor.map(tarefa, pendentes))
+            novos = list(executor.map(tarefa, pendentes))
+        registros.extend(novos)
+        for registro in novos:
+            if registro.situacao == "baixado":
+                origens[f"{registro.divisao}_{registro.temporada}.csv"] = registro.origem
+        _gravar_origens(origens)
 
     relatorio = pd.DataFrame([r.__dict__ for r in registros])
     relatorio = relatorio.sort_values(["divisao", "temporada"]).reset_index(drop=True)
-    relatorio.attrs["oficial_ok"] = estado["oficial_ok"]
+    contagem_origens = relatorio["origem"].value_counts().to_dict()
+    relatorio.attrs["oficial_respondeu"] = estado["oficial_ok"]
     relatorio.attrs["motivo_oficial"] = estado["motivo_oficial"]
+    relatorio.attrs["origens"] = contagem_origens
+    # Só afirmamos "tudo veio da fonte oficial" quando há registro disso para
+    # cada arquivo — nunca por omissão.
+    relatorio.attrs["tudo_oficial"] = (
+        contagem_origens.get("oficial", 0) == len(relatorio))
+    relatorio.attrs["usou_espelho"] = contagem_origens.get("espelho", 0) > 0
     return relatorio
 
 

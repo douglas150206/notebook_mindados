@@ -89,11 +89,16 @@ vários operadores. O dicionário de colunas está em
 > oficial. No ambiente em que esta versão foi executada, a política de rede
 > bloqueia o domínio `football-data.co.uk`, e a coleta caiu automaticamente para
 > um **espelho público** que republica os mesmos CSVs com as colunas originais
-> preservadas. A célula de coleta registra a origem de cada arquivo e emite aviso
-> quando o espelho é usado. **Numa rede sem esse bloqueio, a fonte oficial é
+> preservadas. A origem de cada arquivo fica registrada em
+> `data/raw/_origens.json` e é reexibida a cada execução, inclusive quando tudo
+> vem do cache — assim o relatório nunca afirma "acesso direto" sem ter de fato
+> falado com a fonte oficial. **Numa rede sem esse bloqueio, a fonte oficial é
 > usada automaticamente, sem alterar nenhuma linha de código.** A integridade da
 > base foi conferida contra fatos conhecidos das competições (ver
 > "Decisões e limitações", ao fim do notebook).
+>
+> Para forçar uma recoleta do zero, apague `data/raw/` e execute o notebook de
+> novo.
 
 ## Metodologia, em resumo
 
