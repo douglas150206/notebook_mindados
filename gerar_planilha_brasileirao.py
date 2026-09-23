@@ -268,310 +268,668 @@ def medir_confiabilidade(contexto) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 3. Construção da planilha
+# 3. Sistema visual da planilha
 # ---------------------------------------------------------------------------
+#
+# Regras de desenho, aplicadas em todas as abas:
+#   * nada de linhas de grade nem de bordas em toda célula — o que separa as
+#     linhas é uma faixa alternada bem clara, e o que separa os blocos é a cor
+#     do cabeçalho de grupo;
+#   * cada família de mercado tem a sua cor no cabeçalho, para a vista achar a
+#     região certa numa tabela larga sem ler os rótulos;
+#   * probabilidade recebe escala de cor (quanto mais provável, mais azul); a
+#     odd justa ao lado fica sem preenchimento, em cinza, porque é informação
+#     derivada e não deve competir com a probabilidade;
+#   * linhas altas e colunas largas: a planilha é para ser lida, não para caber.
 
 from openpyxl import Workbook  # noqa: E402
-from openpyxl.formatting.rule import CellIsRule, ColorScaleRule  # noqa: E402
+from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, DataBarRule  # noqa: E402
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: E402
 from openpyxl.utils import get_column_letter  # noqa: E402
 from openpyxl.workbook.defined_name import DefinedName  # noqa: E402
 from openpyxl.worksheet.datavalidation import DataValidation  # noqa: E402
-from openpyxl.worksheet.table import Table, TableStyleInfo  # noqa: E402
 
-PERCENTUAL = "0.0%"
-DECIMAL = "0.00"
-COTACAO = "0.00"
+FONTE = "Arial"
 
-FONTE_TITULO = Font(name=FONTE, size=16, bold=True, color=AZUL_ESCURO)
-FONTE_SUBTITULO = Font(name=FONTE, size=11, color=CINZA_TEXTO)
-FONTE_CABECALHO = Font(name=FONTE, size=10, bold=True, color=BRANCO)
-FONTE_NORMAL = Font(name=FONTE, size=10)
-FONTE_NEGRITO = Font(name=FONTE, size=10, bold=True)
-FONTE_AVISO = Font(name=FONTE, size=10, bold=True, color="9C3A00")
+# Tintas
+TINTA_TITULO = "0F2942"
+TINTA_PRIMARIA = "1F2937"
+TINTA_SECUNDARIA = "6B7280"
+TINTA_CLARA = "9CA3AF"
+VERDE = "12805C"
+VERMELHO = "B3261E"
+AMBAR = "B45309"
 
-FUNDO_CABECALHO = PatternFill("solid", fgColor=AZUL)
-FUNDO_AVISO = PatternFill("solid", fgColor="FFF3CD")
-FUNDO_ENTRADA = PatternFill("solid", fgColor="FFFF00")
-FUNDO_SECAO = PatternFill("solid", fgColor=CINZA_CLARO)
+# Superfícies
+BRANCO = "FFFFFF"
+BANDA = "F5F8FC"
+CARTAO = "EEF4FC"
+DESTAQUE_SUAVE = "FFF8E6"
 
-BORDA_FINA = Border(*[Side(style="thin", color="D9D9D9")] * 4)
+# Cores de grupo (cabeçalho de cada família de mercado)
+COR_JOGO = "42566E"
+COR_RESULTADO = "1E4E8C"
+COR_DUPLA = "4A3AA7"
+COR_GOLS = "12805C"
+COR_AMBAS = "C2501F"
+COR_ESCANTEIOS = "0E7490"
+COR_CARTOES = "B45309"
+COR_DESTAQUE = "7A1F6B"
+
+# Escala das probabilidades: branco -> azul claro (texto preto continua legível)
+PROB_MIN = "FFFFFF"
+PROB_MAX = "9EC5F4"
+
+PCT = "0.0%"
+ODD = "0.00"
+NUM = "0.00"
+DATA_BR = "DD/MM/YYYY"
+
+F_TITULO = Font(name=FONTE, size=18, bold=True, color=TINTA_TITULO)
+F_SUBTITULO = Font(name=FONTE, size=10, color=TINTA_SECUNDARIA)
+F_SECAO = Font(name=FONTE, size=12, bold=True, color=TINTA_TITULO)
+F_GRUPO = Font(name=FONTE, size=10, bold=True, color=BRANCO)
+F_COLUNA = Font(name=FONTE, size=9, bold=True, color=TINTA_PRIMARIA)
+F_CORPO = Font(name=FONTE, size=10, color=TINTA_PRIMARIA)
+F_FORTE = Font(name=FONTE, size=10, bold=True, color=TINTA_PRIMARIA)
+F_ODD = Font(name=FONTE, size=10, color=TINTA_SECUNDARIA)
+F_NOTA = Font(name=FONTE, size=9, color=TINTA_SECUNDARIA)
+
+CENTRO = Alignment(horizontal="center", vertical="center")
+CENTRO_QUEBRA = Alignment(horizontal="center", vertical="center", wrap_text=True)
+ESQUERDA = Alignment(horizontal="left", vertical="center")
+DIREITA = Alignment(horizontal="right", vertical="center")
+
+REGUA_COLUNA = Border(bottom=Side(style="thin", color="D5DEE9"))
 
 
-def escrever_cabecalho(planilha, cabecalhos, linha=1):
-    for coluna, texto in enumerate(cabecalhos, start=1):
-        celula = planilha.cell(row=linha, column=coluna, value=texto)
-        celula.font = FONTE_CABECALHO
-        celula.fill = FUNDO_CABECALHO
-        celula.alignment = Alignment(horizontal="center", vertical="center",
-                                     wrap_text=True)
-        celula.border = BORDA_FINA
-    planilha.row_dimensions[linha].height = 34
+def escurecer(hex_cor, fator=0.78):
+    """Tom mais escuro da mesma cor, para alternar grupos vizinhos."""
+    r, g, b = (int(hex_cor[i:i + 2], 16) for i in (0, 2, 4))
+    return "".join(f"{int(c * fator):02X}" for c in (r, g, b))
 
 
-def ajustar_larguras(planilha, larguras):
-    for indice, largura in enumerate(larguras, start=1):
+def preparar_aba(livro, titulo, cor_aba):
+    planilha = livro.create_sheet(titulo)
+    planilha.sheet_view.showGridLines = False
+    planilha.sheet_properties.tabColor = cor_aba
+    return planilha
+
+
+def bloco_titulo(planilha, titulo, subtitulo, ultima_coluna):
+    planilha["A1"] = titulo
+    planilha["A1"].font = F_TITULO
+    planilha["A1"].alignment = ESQUERDA
+    planilha.row_dimensions[1].height = 30
+    planilha["A2"] = subtitulo
+    planilha["A2"].font = F_SUBTITULO
+    planilha["A2"].alignment = ESQUERDA
+    planilha.merge_cells(start_row=2, start_column=1, end_row=2,
+                         end_column=max(2, ultima_coluna))
+    planilha.row_dimensions[2].height = 16
+
+
+def cabecalho_grupos(planilha, linha, grupos):
+    """grupos = [(rótulo, primeira_coluna, n_colunas, cor)]"""
+    for rotulo, primeira, quantas, cor in grupos:
+        if quantas > 1:
+            planilha.merge_cells(start_row=linha, start_column=primeira,
+                                 end_row=linha, end_column=primeira + quantas - 1)
+        for deslocamento in range(quantas):
+            celula = planilha.cell(row=linha, column=primeira + deslocamento)
+            celula.fill = PatternFill("solid", fgColor=cor)
+        celula = planilha.cell(row=linha, column=primeira, value=rotulo)
+        celula.font = F_GRUPO
+        celula.alignment = CENTRO
+    planilha.row_dimensions[linha].height = 20
+
+
+def cabecalho_colunas(planilha, linha, rotulos):
+    for deslocamento, rotulo in enumerate(rotulos, start=1):
+        celula = planilha.cell(row=linha, column=deslocamento, value=rotulo)
+        celula.font = F_COLUNA
+        celula.alignment = CENTRO_QUEBRA
+        celula.border = REGUA_COLUNA
+    planilha.row_dimensions[linha].height = 28
+
+
+def larguras(planilha, valores):
+    for indice, largura in enumerate(valores, start=1):
         planilha.column_dimensions[get_column_letter(indice)].width = largura
 
 
-def faixa_percentual(planilha, primeira_linha, ultima_linha, colunas):
-    """Formata como percentual e aplica escala de cor (claro -> escuro)."""
+def bandas(planilha, primeira, ultima, n_colunas, altura=19):
+    """Faixa alternada bem clara — substitui as bordas em toda célula."""
+    for linha in range(primeira, ultima + 1):
+        planilha.row_dimensions[linha].height = altura
+        if (linha - primeira) % 2 == 1:
+            for coluna in range(1, n_colunas + 1):
+                planilha.cell(row=linha, column=coluna).fill = PatternFill(
+                    "solid", fgColor=BANDA)
+
+
+def escala_probabilidade(planilha, primeira, ultima, colunas):
     for coluna in colunas:
         letra = get_column_letter(coluna)
-        for linha in range(primeira_linha, ultima_linha + 1):
-            planilha.cell(row=linha, column=coluna).number_format = PERCENTUAL
+        for linha in range(primeira, ultima + 1):
+            celula = planilha.cell(row=linha, column=coluna)
+            celula.number_format = PCT
+            celula.font = F_CORPO
+            celula.alignment = CENTRO
         planilha.conditional_formatting.add(
-            f"{letra}{primeira_linha}:{letra}{ultima_linha}",
-            ColorScaleRule(start_type="num", start_value=0, start_color=BRANCO,
-                           end_type="num", end_value=1, end_color=AZUL_CLARO))
+            f"{letra}{primeira}:{letra}{ultima}",
+            ColorScaleRule(start_type="num", start_value=0, start_color=PROB_MIN,
+                           end_type="num", end_value=1, end_color=PROB_MAX))
 
 
-def criar_tabela(planilha, nome, primeira_linha, ultima_linha, ultima_coluna):
-    referencia = f"A{primeira_linha}:{get_column_letter(ultima_coluna)}{ultima_linha}"
-    tabela = Table(displayName=nome, ref=referencia)
-    tabela.tableStyleInfo = TableStyleInfo(
-        name="TableStyleLight9", showRowStripes=True, showColumnStripes=False)
-    planilha.add_table(tabela)
+def coluna_odd(planilha, primeira, ultima, colunas):
+    """Odd justa: discreta de propósito, para não competir com a probabilidade."""
+    for coluna in colunas:
+        for linha in range(primeira, ultima + 1):
+            celula = planilha.cell(row=linha, column=coluna)
+            celula.number_format = ODD
+            celula.font = F_ODD
+            celula.alignment = CENTRO
 
 
-def aba_leiame(livro, previsoes, contexto, confiabilidade):
-    planilha = livro.create_sheet("Leia-me")
-    planilha.sheet_view.showGridLines = False
-    ajustar_larguras(planilha, [3, 46, 30, 30, 22, 22])
+def coluna_numero(planilha, primeira, ultima, colunas, formato=NUM):
+    for coluna in colunas:
+        for linha in range(primeira, ultima + 1):
+            celula = planilha.cell(row=linha, column=coluna)
+            celula.number_format = formato
+            celula.font = F_CORPO
+            celula.alignment = CENTRO
 
-    planilha["B2"] = "PALPITES DO BRASILEIRÃO SÉRIE A 2026"
-    planilha["B2"].font = FONTE_TITULO
-    planilha["B3"] = (f"Gerado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')} · "
-                      f"dados até {contexto['data_corte'].date().strftime('%d/%m/%Y')} · "
-                      f"{len(previsoes)} partidas restantes")
-    planilha["B3"].font = FONTE_SUBTITULO
 
+def nota_rodape(planilha, linha, texto, ultima_coluna):
+    celula = planilha.cell(row=linha, column=1, value=texto)
+    celula.font = F_NOTA
+    celula.alignment = ESQUERDA
+    planilha.merge_cells(start_row=linha, start_column=1, end_row=linha,
+                         end_column=max(2, ultima_coluna))
+
+
+# ---------------------------------------------------------------------------
+# Aba de entrada
+# ---------------------------------------------------------------------------
+
+def aba_inicio(livro, previsoes, contexto, confiabilidade):
+    planilha = preparar_aba(livro, "Início", COR_RESULTADO)
+    larguras(planilha, [2, 24, 24, 24, 24, 24, 24, 4])
+
+    planilha["B2"] = "BRASILEIRÃO SÉRIE A 2026"
+    planilha["B2"].font = Font(name=FONTE, size=24, bold=True, color=TINTA_TITULO)
+    planilha.row_dimensions[2].height = 34
+    planilha["B3"] = "Previsões de gols, resultados, escanteios e cartões — com a odd justa de cada mercado"
+    planilha["B3"].font = Font(name=FONTE, size=11, color=TINTA_SECUNDARIA)
+    planilha.merge_cells("B3:G3")
+
+    # --- cartões com os números-chave ---------------------------------------
+    rodadas = sorted(previsoes["Rodada"].dropna().unique())
+    cartoes = [
+        ("PARTIDAS RESTANTES", f"{len(previsoes)}", "de 380 no campeonato"),
+        ("RODADAS RESTANTES", f"{len(rodadas)}",
+         f"da {int(min(rodadas))} à {int(max(rodadas))}"),
+        ("LÍDER", contexto["classificacao"].iloc[0]["time"],
+         f"{int(contexto['classificacao'].iloc[0]['pontos'])} pontos"),
+        ("DADOS ATÉ", contexto["data_corte"].strftime("%d/%m/%Y"),
+         f"{contexto['n_disputadas']} partidas disputadas"),
+    ]
     linha = 5
-    planilha[f"B{linha}"] = "O QUE TEM AQUI"
-    planilha[f"B{linha}"].font = Font(name=FONTE, size=12, bold=True)
+    for indice, (rotulo, valor, apoio) in enumerate(cartoes):
+        coluna = 2 + indice
+        planilha.cell(row=linha, column=coluna, value=rotulo).font = Font(
+            name=FONTE, size=8, bold=True, color=TINTA_SECUNDARIA)
+        planilha.cell(row=linha + 1, column=coluna, value=valor).font = Font(
+            name=FONTE, size=16, bold=True, color=COR_RESULTADO)
+        planilha.cell(row=linha + 2, column=coluna, value=apoio).font = Font(
+            name=FONTE, size=9, color=TINTA_CLARA)
+        for deslocamento in range(3):
+            celula = planilha.cell(row=linha + deslocamento, column=coluna)
+            celula.fill = PatternFill("solid", fgColor=CARTAO)
+            celula.alignment = ESQUERDA
+    planilha.row_dimensions[linha].height = 14
+    planilha.row_dimensions[linha + 1].height = 24
+    planilha.row_dimensions[linha + 2].height = 16
+
+    # --- por onde começar ---------------------------------------------------
+    linha = 10
+    planilha.cell(row=linha, column=2, value="POR ONDE COMEÇAR").font = F_SECAO
     linha += 1
     abas = [
-        ("Palpites", "Todas as partidas com os principais mercados, uma linha por jogo. Comece por aqui."),
-        ("Rodadas", "As mesmas previsões organizadas pelo calendário oficial: resumo de cada rodada e os jogos em ordem."),
-        ("Resultado 1X2", "Vitória, empate, derrota, dupla chance e a cotação mínima de cada um."),
-        ("Gols", "Mais/menos de 0,5 a 4,5 gols, gols esperados e placar mais provável."),
-        ("Multi-Gols", "Probabilidade de o total de gols cair em cada faixa (0-1, 1-2, 1-3...)."),
-        ("Ambas Marcam", "Ambas marcam sim/não e a chance de cada equipe marcar."),
-        ("Escanteios", "Escanteios esperados e linhas de mais/menos. CONFIANÇA MÉDIA."),
-        ("Cartões", "Cartões esperados e linhas de mais/menos. CONFIANÇA MÉDIA."),
-        ("Calculadora", "Escolha a partida e o mercado, digite a cotação e veja se vale a pena."),
-        ("Confiabilidade", "Quanto cada mercado errou em testes fora da amostra."),
-        ("Times", "Força de ataque e defesa de cada clube, em gols, escanteios e cartões."),
+        ("Palpites", "Todas as 103 partidas numa tela, com probabilidade e odd justa.", COR_RESULTADO),
+        ("Rodadas", "As mesmas previsões no calendário oficial: resumo por rodada e jogo a jogo.", COR_JOGO),
+        ("Calculadora", "Escolha a partida e o mercado, digite a cotação da casa e veja se compensa.", COR_DESTAQUE),
+        ("Resultado 1X2", "Vitória, empate, derrota e dupla chance, com as odds justas.", COR_RESULTADO),
+        ("Gols", "Mais/menos de 0,5 a 4,5 gols e o placar mais provável.", COR_GOLS),
+        ("Multi-Gols", "Chance de o total de gols cair em cada faixa.", COR_GOLS),
+        ("Ambas Marcam", "Ambas marcam sim/não e a chance de cada equipe marcar.", COR_AMBAS),
+        ("Escanteios", "Escanteios esperados e linhas de mais/menos.", COR_ESCANTEIOS),
+        ("Cartões", "Cartões esperados e linhas de mais/menos.", COR_CARTOES),
+        ("Confiabilidade", "Quanto cada mercado errou em teste fora da amostra.", COR_JOGO),
+        ("Times", "Força de ataque e defesa de cada clube.", COR_JOGO),
     ]
-    planilha.cell(row=linha, column=2, value="Aba").font = FONTE_CABECALHO
-    planilha.cell(row=linha, column=2).fill = FUNDO_CABECALHO
-    planilha.cell(row=linha, column=3, value="Para que serve").font = FONTE_CABECALHO
-    planilha.cell(row=linha, column=3).fill = FUNDO_CABECALHO
-    planilha.merge_cells(start_row=linha, start_column=3, end_row=linha, end_column=6)
-    linha += 1
-    for nome, descricao in abas:
-        planilha.cell(row=linha, column=2, value=nome).font = FONTE_NEGRITO
-        planilha.cell(row=linha, column=3, value=descricao).font = FONTE_NORMAL
-        planilha.merge_cells(start_row=linha, start_column=3, end_row=linha, end_column=6)
+    for nome, descricao, cor in abas:
+        celula = planilha.cell(row=linha, column=2, value=nome)
+        celula.font = Font(name=FONTE, size=10, bold=True, color=BRANCO)
+        celula.fill = PatternFill("solid", fgColor=cor)
+        celula.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        descricao_celula = planilha.cell(row=linha, column=3, value=descricao)
+        descricao_celula.font = F_CORPO
+        descricao_celula.alignment = ESQUERDA
+        planilha.merge_cells(start_row=linha, start_column=3, end_row=linha, end_column=7)
+        planilha.row_dimensions[linha].height = 18
         linha += 1
 
+    # --- como ler ------------------------------------------------------------
     linha += 1
-    planilha[f"B{linha}"] = "CONFIANÇA DE CADA FAMÍLIA DE MERCADO"
-    planilha[f"B{linha}"].font = Font(name=FONTE, size=12, bold=True)
+    planilha.cell(row=linha, column=2, value="COMO LER A ODD JUSTA").font = F_SECAO
+    linha += 1
+    for texto in [
+        "A odd justa é 1 dividido pela probabilidade: o preço de equilíbrio daquele palpite.",
+        "Casa paga ACIMA da odd justa  →  a aposta tem valor esperado positivo.",
+        "Casa paga ABAIXO da odd justa  →  valor esperado negativo, mesmo que o palpite acerte muito.",
+        "A cotação não muda a chance de acertar. Muda só o quanto se recebe por acertar.",
+    ]:
+        celula = planilha.cell(row=linha, column=2, value="•   " + texto)
+        celula.font = F_CORPO
+        planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=7)
+        planilha.row_dimensions[linha].height = 16
+        linha += 1
+
+    # --- confiança -----------------------------------------------------------
+    linha += 1
+    planilha.cell(row=linha, column=2, value="CONFIANÇA DE CADA FAMÍLIA").font = F_SECAO
     linha += 1
     niveis = [
-        ("Resultado, gols, multi-gols", "ALTA",
-         "Modelo de Poisson com correção de Dixon-Coles, ajustado com TODAS as partidas "
-         "até a rodada mais recente de 2026. Testado em 4.076 partidas fora da amostra."),
-        ("Escanteios e cartões", "MÉDIA",
-         "Base própria de estatísticas, agora cobrindo 2015 a 2026 — inclui a temporada "
-         "corrente e todos os 20 clubes, Mirassol e Remo inclusive. Fora da amostra o "
-         "viés médio ficou em torno de 1 a 2 pontos percentuais, mas oscila cerca de "
-         "±5 p.p. de uma temporada para outra: use como boa estimativa, não como número "
-         "fino."),
-        ("Ambas as equipes marcam", "MÉDIA",
-         "Mesmo modelo dos gols, mas ele supõe que os gols dos dois times são "
-         "independentes e por isso SUBESTIMA este mercado em cerca de 4 pontos "
-         "percentuais (valor medido). Some o viés antes de usar."),
+        ("ALTA", VERDE, "Resultado, gols e multi-gols",
+         "Poisson com Dixon-Coles, ajustado com todas as partidas até a rodada mais "
+         "recente de 2026 e testado em 4.076 partidas fora da amostra."),
+        ("MÉDIA", AMBAR, "Escanteios e cartões",
+         "Base própria de estatísticas cobrindo 2015 a 2026, com os 20 clubes. Viés "
+         "fora da amostra de 1 a 2 p.p., mas oscila cerca de ±5 p.p. entre temporadas."),
+        ("MÉDIA", AMBAR, "Ambas as equipes marcam",
+         "O modelo supõe gols independentes e subestima este mercado em cerca de 4 "
+         "pontos percentuais. Some o viés antes de usar."),
     ]
-    for mercado, nivel, explicacao in niveis:
-        planilha.cell(row=linha, column=2, value=mercado).font = FONTE_NEGRITO
-        celula = planilha.cell(row=linha, column=3, value=nivel)
-        celula.font = Font(name=FONTE, size=10, bold=True,
-                           color={"ALTA": "1B7A4A", "MÉDIA": "9C6500",
-                                  "BAIXA": "A32020"}[nivel])
-        planilha.cell(row=linha, column=4, value=explicacao).font = FONTE_NORMAL
-        planilha.merge_cells(start_row=linha, start_column=4, end_row=linha, end_column=6)
-        planilha.row_dimensions[linha].height = 42
-        planilha.cell(row=linha, column=4).alignment = Alignment(wrap_text=True,
-                                                                 vertical="top")
+    for nivel, cor, familia, explicacao in niveis:
+        celula = planilha.cell(row=linha, column=2, value=nivel)
+        celula.font = Font(name=FONTE, size=10, bold=True, color=BRANCO)
+        celula.fill = PatternFill("solid", fgColor=cor)
+        celula.alignment = CENTRO
+        planilha.cell(row=linha, column=3, value=familia).font = F_FORTE
+        explicacao_celula = planilha.cell(row=linha, column=4, value=explicacao)
+        explicacao_celula.font = F_NOTA
+        explicacao_celula.alignment = Alignment(wrap_text=True, vertical="center")
+        planilha.merge_cells(start_row=linha, start_column=4, end_row=linha, end_column=7)
+        planilha.row_dimensions[linha].height = 22
         linha += 1
 
+    # --- aviso ---------------------------------------------------------------
     linha += 1
-    planilha[f"B{linha}"] = "COMO LER AS PROBABILIDADES"
-    planilha[f"B{linha}"].font = Font(name=FONTE, size=12, bold=True)
-    linha += 1
-    for texto in [
-        "A coluna de probabilidade é a chance de o evento acontecer segundo o modelo.",
-        "A 'cotação mínima' é 1 dividido por essa probabilidade: é o preço de equilíbrio.",
-        "Se a casa paga ACIMA da cotação mínima, a aposta tem valor esperado positivo.",
-        "Se paga ABAIXO, tem valor esperado negativo — mesmo que o palpite acerte com frequência.",
-        "A cotação NÃO muda a chance de acertar. Ela muda o quanto se recebe por acertar.",
-    ]:
-        planilha.cell(row=linha, column=2, value="•  " + texto).font = FONTE_NORMAL
-        planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=6)
-        linha += 1
-
-    linha += 1
-    aviso = planilha.cell(row=linha, column=2)
-    aviso.value = "AVISO IMPORTANTE"
-    aviso.font = Font(name=FONTE, size=12, bold=True, color="9C3A00")
-    linha += 1
-    for texto in [
-        "Esta planilha é um trabalho de análise de dados, não um sistema de apostas.",
-        "A análise do próprio projeto mostrou que o retorno esperado é NEGATIVO em todas as",
-        "faixas de cotação do Brasileirão (de -1,7% nas cotações baixas a -31,8% acima de 10),",
-        "e que apostar só onde o modelo enxerga vantagem PIORA o resultado, não melhora.",
-        "O mercado acerta mais que este modelo: 51,3% contra 48,9% de acurácia no 1X2.",
-        "Aposta é entretenimento com custo esperado. Nenhuma linha aqui é recomendação.",
-    ]:
+    for indice, texto in enumerate([
+        "AVISO",
+        "Isto é um trabalho de análise de dados, não um sistema de apostas. A própria "
+        "análise deste projeto mostrou que o retorno esperado é negativo em todas as "
+        "faixas de cotação do Brasileirão, e que apostar só onde o modelo enxerga "
+        "vantagem piora o resultado. O mercado acerta mais que este modelo: 51,3% "
+        "contra 48,9% no 1X2.",
+    ]):
         celula = planilha.cell(row=linha, column=2, value=texto)
-        celula.font = FONTE_AVISO if texto.startswith("Esta") else FONTE_NORMAL
-        celula.fill = FUNDO_AVISO
-        planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=6)
-        for coluna in range(2, 7):
-            planilha.cell(row=linha, column=coluna).fill = FUNDO_AVISO
+        celula.font = (Font(name=FONTE, size=10, bold=True, color=AMBAR) if indice == 0
+                       else Font(name=FONTE, size=9, color=TINTA_PRIMARIA))
+        celula.alignment = Alignment(wrap_text=True, vertical="top")
+        planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=7)
+        for coluna in range(2, 8):
+            planilha.cell(row=linha, column=coluna).fill = PatternFill(
+                "solid", fgColor=DESTAQUE_SUAVE)
+        planilha.row_dimensions[linha].height = 14 if indice == 0 else 46
         linha += 1
 
     linha += 1
-    planilha.cell(row=linha, column=2,
-                  value="Fonte dos gols e cotações: Football-Data.co.uk (via espelho público). "
-                        "Fonte de escanteios, cartões e calendário: datalake "
-                        "leeofernandes1980/brasileirao-dataset (2015-2026). Os 277 resultados "
-                        "já disputados de 2026 batem exatamente entre as duas bases, e as 103 "
-                        "partidas restantes coincidem com as deduzidas do formato do campeonato.")
-    planilha.cell(row=linha, column=2).font = FONTE_SUBTITULO
-    planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=6)
+    nota_rodape(planilha, linha,
+                "Gols e cotações: Football-Data.co.uk. Escanteios, cartões e calendário: "
+                "datalake leeofernandes1980/brasileirao-dataset (2015-2026). Os 277 "
+                "resultados já disputados de 2026 batem entre as duas bases.", 7)
+    planilha.sheet_view.zoomScale = 100
     return planilha
 
+
+# ---------------------------------------------------------------------------
+# Aba principal
+# ---------------------------------------------------------------------------
 
 def aba_palpites(livro, previsoes):
-    """Aba principal: uma linha por partida com os mercados mais usados."""
-    planilha = livro.create_sheet("Palpites")
-    cabecalhos = [
-        "Rodada", "Data", "Mandante", "Visitante", "Palpite 1X2", "Placar provável",
-        "Casa", "Empate", "Fora", "1X", "12", "X2",
-        "Gols esperados", "+1,5", "+2,5", "+3,5",
-        "Ambas marcam", "Multi 1-3", "Multi 2-4",
-        "Escanteios", "Esc +8,5", "Esc +9,5", "Cartões", "Cart +3,5", "Cart +4,5",
-        "Palpite mais seguro", "Chance",
+    """
+    Uma linha por partida. Cada mercado aparece em par: a probabilidade
+    (colorida) e, ao lado, a odd justa (discreta), calculada por fórmula.
+    """
+    planilha = preparar_aba(livro, "Palpites", COR_RESULTADO)
+    bloco_titulo(planilha, "PALPITES — TODAS AS PARTIDAS",
+                 f"{len(previsoes)} jogos restantes, na ordem do calendário. "
+                 "Use os filtros do cabeçalho. Ao lado de cada probabilidade está "
+                 "a odd justa: se a casa paga mais que ela, a aposta tem valor.", 22)
+
+    grupos = [
+        ("JOGO", 1, 4, COR_JOGO),
+        ("RESULTADO", 5, 9, COR_RESULTADO),
+        ("GOLS", 14, 3, COR_GOLS),
+        ("AMBAS", 17, 2, COR_AMBAS),
+        ("ESC.", 19, 1, COR_ESCANTEIOS),
+        ("CART.", 20, 1, COR_CARTOES),
+        ("PALPITE MAIS SEGURO", 21, 3, COR_DESTAQUE),
     ]
-    escrever_cabecalho(planilha, cabecalhos)
+    linha_grupo = 4
+    cabecalho_grupos(planilha, linha_grupo, grupos)
+    rotulos = ["Rodada", "Data", "Mandante", "Visitante",
+               "Palpite", "Placar", "Placar %",
+               "Casa", "Odd", "Empate", "Odd", "Fora", "Odd",
+               "Gols esp.", "+2,5", "Odd",
+               "Sim", "Odd",
+               "Escanteios", "Cartões",
+               "Aposta", "Chance", "Odd"]
+    cabecalho_colunas(planilha, linha_grupo + 1, rotulos)
 
+    primeira = linha_grupo + 2
     ordenado = previsoes.sort_values(["Rodada", "Data", "Mandante"])
-    for indice, registro in enumerate(ordenado.itertuples(index=False), start=2):
-        planilha.cell(row=indice, column=1, value=registro.Rodada)
-        planilha.cell(row=indice, column=2, value=registro.Data)
-        planilha.cell(row=indice, column=3, value=registro.Mandante)
-        planilha.cell(row=indice, column=4, value=registro.Visitante)
-        planilha.cell(row=indice, column=5, value=registro.palpite_1x2)
-        planilha.cell(row=indice, column=6, value=registro.placar_mais_provavel)
-        planilha.cell(row=indice, column=7, value=registro.prob_H)
-        planilha.cell(row=indice, column=8, value=registro.prob_D)
-        planilha.cell(row=indice, column=9, value=registro.prob_A)
-        # Dupla chance como fórmula: recalcula se a probabilidade mudar.
-        planilha.cell(row=indice, column=10, value=f"=G{indice}+H{indice}")
-        planilha.cell(row=indice, column=11, value=f"=G{indice}+I{indice}")
-        planilha.cell(row=indice, column=12, value=f"=H{indice}+I{indice}")
-        planilha.cell(row=indice, column=13, value=registro.gols_esperados_total)
-        planilha.cell(row=indice, column=14, value=registro.mais_de_1_5)
-        planilha.cell(row=indice, column=15, value=registro.mais_de_2_5)
-        planilha.cell(row=indice, column=16, value=registro.mais_de_3_5)
-        planilha.cell(row=indice, column=17, value=registro.prob_ambas_marcam)
-        planilha.cell(row=indice, column=18, value=registro.multigols_1_3)
-        planilha.cell(row=indice, column=19, value=registro.multigols_2_4)
-        planilha.cell(row=indice, column=20, value=registro.escanteios_total)
-        planilha.cell(row=indice, column=21, value=getattr(registro, "escanteios_mais_8_5"))
-        planilha.cell(row=indice, column=22, value=getattr(registro, "escanteios_mais_9_5"))
-        planilha.cell(row=indice, column=23, value=registro.cartoes_total)
-        planilha.cell(row=indice, column=24, value=getattr(registro, "cartoes_mais_3_5"))
-        planilha.cell(row=indice, column=25, value=getattr(registro, "cartoes_mais_4_5"))
-        planilha.cell(row=indice, column=26, value=registro.palpite_seguro)
-        planilha.cell(row=indice, column=27, value=registro.palpite_seguro_prob)
+    for deslocamento, registro in enumerate(ordenado.itertuples(index=False)):
+        linha = primeira + deslocamento
+        planilha.cell(row=linha, column=1, value=registro.Rodada)
+        planilha.cell(row=linha, column=2, value=registro.Data)
+        planilha.cell(row=linha, column=3, value=registro.Mandante)
+        planilha.cell(row=linha, column=4, value=registro.Visitante)
+        planilha.cell(row=linha, column=5, value=registro.palpite_1x2)
+        planilha.cell(row=linha, column=6, value=registro.placar_mais_provavel)
+        planilha.cell(row=linha, column=7, value=registro.prob_placar_mais_provavel)
+        planilha.cell(row=linha, column=8, value=registro.prob_H)
+        planilha.cell(row=linha, column=9, value=f'=IFERROR(1/H{linha},"")')
+        planilha.cell(row=linha, column=10, value=registro.prob_D)
+        planilha.cell(row=linha, column=11, value=f'=IFERROR(1/J{linha},"")')
+        planilha.cell(row=linha, column=12, value=registro.prob_A)
+        planilha.cell(row=linha, column=13, value=f'=IFERROR(1/L{linha},"")')
+        planilha.cell(row=linha, column=14, value=registro.gols_esperados_total)
+        planilha.cell(row=linha, column=15, value=registro.mais_de_2_5)
+        planilha.cell(row=linha, column=16, value=f'=IFERROR(1/O{linha},"")')
+        planilha.cell(row=linha, column=17, value=registro.prob_ambas_marcam)
+        planilha.cell(row=linha, column=18, value=f'=IFERROR(1/Q{linha},"")')
+        planilha.cell(row=linha, column=19, value=registro.escanteios_total)
+        planilha.cell(row=linha, column=20, value=registro.cartoes_total)
+        planilha.cell(row=linha, column=21, value=registro.palpite_seguro)
+        planilha.cell(row=linha, column=22, value=registro.palpite_seguro_prob)
+        planilha.cell(row=linha, column=23, value=f'=IFERROR(1/V{linha},"")')
 
-    ultima = len(previsoes) + 1
-    faixa_percentual(planilha, 2, ultima,
-                     [7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 24, 25, 27])
-    for coluna in (13, 20, 23):
-        for linha in range(2, ultima + 1):
-            planilha.cell(row=linha, column=coluna).number_format = DECIMAL
+    ultima = primeira + len(ordenado) - 1
+    bandas(planilha, primeira, ultima, len(rotulos))
+    # A coluna "Chance" (22) também é probabilidade: entra na formatação para
+    # não sair como 0,786 em vez de 78,6%.
+    escala_probabilidade(planilha, primeira, ultima, [7, 8, 10, 12, 15, 17, 22])
+    coluna_odd(planilha, primeira, ultima, [9, 11, 13, 16, 18, 23])
+    coluna_numero(planilha, primeira, ultima, [14, 19, 20])
 
-    for linha in range(2, ultima + 1):
-        for coluna in range(1, len(cabecalhos) + 1):
-            celula = planilha.cell(row=linha, column=coluna)
-            celula.font = FONTE_NORMAL
-            celula.border = BORDA_FINA
-        planilha.cell(row=linha, column=2).number_format = "DD/MM/YYYY"
-        planilha.cell(row=linha, column=5).font = FONTE_NEGRITO
-        planilha.cell(row=linha, column=26).font = FONTE_NEGRITO
+    for linha in range(primeira, ultima + 1):
+        planilha.cell(row=linha, column=1).font = F_CORPO
+        planilha.cell(row=linha, column=1).alignment = CENTRO
+        planilha.cell(row=linha, column=2).number_format = DATA_BR
+        planilha.cell(row=linha, column=2).font = F_CORPO
+        planilha.cell(row=linha, column=2).alignment = CENTRO
+        for coluna in (3, 4):
+            planilha.cell(row=linha, column=coluna).font = F_CORPO
+            planilha.cell(row=linha, column=coluna).alignment = ESQUERDA
+        planilha.cell(row=linha, column=5).font = F_FORTE
+        planilha.cell(row=linha, column=5).alignment = CENTRO
+        planilha.cell(row=linha, column=6).font = F_CORPO
+        planilha.cell(row=linha, column=6).alignment = CENTRO
+        planilha.cell(row=linha, column=21).font = F_CORPO
+        planilha.cell(row=linha, column=21).alignment = ESQUERDA
 
-    ajustar_larguras(planilha, [8, 12, 17, 17, 12, 13, 8, 8, 8, 8, 8, 8, 13, 8, 8, 8,
-                                13, 10, 10, 11, 9, 9, 10, 9, 9, 24, 9])
-    planilha.freeze_panes = "E2"
-    planilha.auto_filter.ref = f"A1:{get_column_letter(len(cabecalhos))}{ultima}"
+    # Barra de dados na chance do palpite mais seguro: leitura instantânea.
+    planilha.conditional_formatting.add(
+        f"V{primeira}:V{ultima}",
+        DataBarRule(start_type="num", start_value=0, end_type="num", end_value=1,
+                    color=COR_DESTAQUE, showValue=True))
 
-    nota = planilha.cell(row=ultima + 2, column=1)
-    nota.value = ("Ordenado pelo calendário oficial. Use o filtro da coluna Rodada "
-                  "para ver uma rodada por vez, ou a aba Rodadas para o resumo.")
-    nota.font = FONTE_SUBTITULO
+    larguras(planilha, [8, 11, 18, 18, 9, 8, 9, 8, 7, 9, 7, 8, 7, 10, 8, 7,
+                        8, 7, 11, 9, 23, 9, 7])
+    planilha.freeze_panes = planilha.cell(row=primeira, column=5).coordinate
+    planilha.auto_filter.ref = (f"A{linha_grupo + 1}:"
+                                f"{get_column_letter(len(rotulos))}{ultima}")
+    nota_rodape(planilha, ultima + 2,
+                "Odd justa = 1 / probabilidade. 'Placar %' é a chance do placar exato "
+                "mostrado ao lado. Escanteios e cartões são o total esperado da partida "
+                "(confiança média — ver aba Início).", len(rotulos))
     return planilha
 
 
-def aba_mercado(livro, previsoes, titulo, colunas, aviso=None, formatos=None):
-    """Monta uma aba de detalhe de um mercado a partir de (cabeçalho, coluna)."""
-    planilha = livro.create_sheet(titulo)
-    primeira = 1
+def aba_rodadas(livro, previsoes):
+    """Resumo de cada rodada e, abaixo, os jogos na ordem do calendário."""
+    planilha = preparar_aba(livro, "Rodadas", COR_JOGO)
+    com_rodada = previsoes.dropna(subset=["Rodada"]).copy()
+    com_rodada["Rodada"] = com_rodada["Rodada"].astype(int)
+
+    bloco_titulo(planilha, "PREVISÕES RODADA A RODADA",
+                 f"{len(com_rodada)} partidas em {com_rodada['Rodada'].nunique()} "
+                 "rodadas. Jogos marcados como ADIADO estão na rodada original e a "
+                 "data já passou: vale a rodada, não a data.", 16)
+
+    resumo = (com_rodada.groupby("Rodada")
+              .agg(jogos=("n", "size"), primeira_data=("Data", "min"),
+                   ultima_data=("Data", "max"),
+                   gols=("gols_esperados_total", "mean"),
+                   casa=("prob_H", "mean"), empate=("prob_D", "mean"),
+                   over=("mais_de_2_5", "mean"), ambas=("prob_ambas_marcam", "mean"),
+                   escanteios=("escanteios_total", "mean"),
+                   cartoes=("cartoes_total", "mean"))
+              .reset_index())
+
+    linha = 4
+    planilha.cell(row=linha, column=1, value="RESUMO POR RODADA").font = F_SECAO
+    linha += 1
+    cabecalho_grupos(planilha, linha, [
+        ("RODADA", 1, 4, COR_JOGO), ("MÉDIAS DA RODADA", 5, 5, COR_RESULTADO),
+        ("ESC.", 10, 1, COR_ESCANTEIOS), ("CART.", 11, 1, COR_CARTOES)])
+    cabecalho_colunas(planilha, linha + 1,
+                      ["Rodada", "Jogos", "De", "Até", "Gols esp.", "Mandante",
+                       "Empate", "+2,5", "Ambas", "Escanteios", "Cartões"])
+    primeira_resumo = linha + 2
+    for deslocamento, registro in enumerate(resumo.itertuples(index=False)):
+        atual = primeira_resumo + deslocamento
+        for coluna, valor in enumerate(
+                [registro.Rodada, registro.jogos, registro.primeira_data,
+                 registro.ultima_data, registro.gols, registro.casa, registro.empate,
+                 registro.over, registro.ambas, registro.escanteios,
+                 registro.cartoes], start=1):
+            planilha.cell(row=atual, column=coluna, value=valor)
+    ultima_resumo = primeira_resumo + len(resumo) - 1
+    bandas(planilha, primeira_resumo, ultima_resumo, 11)
+    escala_probabilidade(planilha, primeira_resumo, ultima_resumo, [6, 7, 8, 9])
+    coluna_numero(planilha, primeira_resumo, ultima_resumo, [5, 10, 11])
+    for atual in range(primeira_resumo, ultima_resumo + 1):
+        for coluna in (1, 2):
+            planilha.cell(row=atual, column=coluna).font = F_FORTE
+            planilha.cell(row=atual, column=coluna).alignment = CENTRO
+        for coluna in (3, 4):
+            planilha.cell(row=atual, column=coluna).number_format = DATA_BR
+            planilha.cell(row=atual, column=coluna).font = F_CORPO
+            planilha.cell(row=atual, column=coluna).alignment = CENTRO
+
+    total = ultima_resumo + 1
+    planilha.cell(row=total, column=1, value="TODAS").font = F_FORTE
+    planilha.cell(row=total, column=2,
+                  value=f"=SUM(B{primeira_resumo}:B{ultima_resumo})")
+    for coluna in range(5, 12):
+        letra = get_column_letter(coluna)
+        planilha.cell(row=total, column=coluna,
+                      value=f"=AVERAGE({letra}{primeira_resumo}:{letra}{ultima_resumo})")
+    for coluna in range(1, 12):
+        celula = planilha.cell(row=total, column=coluna)
+        celula.fill = PatternFill("solid", fgColor=CARTAO)
+        celula.font = F_FORTE
+        celula.alignment = CENTRO
+        if coluna in (6, 7, 8, 9):
+            celula.number_format = PCT
+        elif coluna in (5, 10, 11):
+            celula.number_format = NUM
+    planilha.row_dimensions[total].height = 20
+
+    # --- jogo a jogo ---------------------------------------------------------
+    linha = total + 3
+    planilha.cell(row=linha, column=1, value="JOGO A JOGO").font = F_SECAO
+    linha += 1
+    cabecalho_grupos(planilha, linha, [
+        ("JOGO", 1, 5, COR_JOGO), ("RESULTADO", 6, 6, COR_RESULTADO),
+        ("GOLS", 12, 3, COR_GOLS), ("AMBAS", 15, 1, COR_AMBAS),
+        ("ESC.", 16, 1, COR_ESCANTEIOS), ("CART.", 17, 1, COR_CARTOES),
+        ("PALPITE MAIS SEGURO", 18, 3, COR_DESTAQUE)])
+    rotulos = ["Rodada", "Data", "Situação", "Mandante", "Visitante",
+               "Palpite", "Placar", "Casa", "Empate", "Fora", "Odd fav.",
+               "Gols esp.", "+2,5", "Odd", "Ambas", "Escanteios", "Cartões",
+               "Aposta", "Chance", "Odd"]
+    cabecalho_colunas(planilha, linha + 1, rotulos)
+    primeira_detalhe = linha + 2
+
+    atual = primeira_detalhe
+    for registro in com_rodada.sort_values(["Rodada", "Data", "Mandante"]).itertuples(
+            index=False):
+        planilha.cell(row=atual, column=1, value=registro.Rodada)
+        planilha.cell(row=atual, column=2, value=registro.Data)
+        planilha.cell(row=atual, column=3, value=registro.situacao)
+        planilha.cell(row=atual, column=4, value=registro.Mandante)
+        planilha.cell(row=atual, column=5, value=registro.Visitante)
+        planilha.cell(row=atual, column=6, value=registro.palpite_1x2)
+        planilha.cell(row=atual, column=7, value=registro.placar_mais_provavel)
+        planilha.cell(row=atual, column=8, value=registro.prob_H)
+        planilha.cell(row=atual, column=9, value=registro.prob_D)
+        planilha.cell(row=atual, column=10, value=registro.prob_A)
+        planilha.cell(row=atual, column=11,
+                      value=f'=IFERROR(1/MAX(H{atual}:J{atual}),"")')
+        planilha.cell(row=atual, column=12, value=registro.gols_esperados_total)
+        planilha.cell(row=atual, column=13, value=registro.mais_de_2_5)
+        planilha.cell(row=atual, column=14, value=f'=IFERROR(1/M{atual},"")')
+        planilha.cell(row=atual, column=15, value=registro.prob_ambas_marcam)
+        planilha.cell(row=atual, column=16, value=registro.escanteios_total)
+        planilha.cell(row=atual, column=17, value=registro.cartoes_total)
+        planilha.cell(row=atual, column=18, value=registro.palpite_seguro)
+        planilha.cell(row=atual, column=19, value=registro.palpite_seguro_prob)
+        planilha.cell(row=atual, column=20, value=f'=IFERROR(1/S{atual},"")')
+        atual += 1
+    ultima_detalhe = atual - 1
+
+    bandas(planilha, primeira_detalhe, ultima_detalhe, len(rotulos))
+    escala_probabilidade(planilha, primeira_detalhe, ultima_detalhe,
+                         [8, 9, 10, 13, 15, 19])  # 19 = Chance, também percentual
+    coluna_odd(planilha, primeira_detalhe, ultima_detalhe, [11, 14, 20])
+    coluna_numero(planilha, primeira_detalhe, ultima_detalhe, [12, 16, 17])
+    for atual in range(primeira_detalhe, ultima_detalhe + 1):
+        planilha.cell(row=atual, column=1).font = F_FORTE
+        planilha.cell(row=atual, column=1).alignment = CENTRO
+        planilha.cell(row=atual, column=2).number_format = DATA_BR
+        planilha.cell(row=atual, column=2).font = F_CORPO
+        planilha.cell(row=atual, column=2).alignment = CENTRO
+        planilha.cell(row=atual, column=3).font = F_NOTA
+        planilha.cell(row=atual, column=3).alignment = CENTRO
+        for coluna in (4, 5, 18):
+            planilha.cell(row=atual, column=coluna).font = F_CORPO
+            planilha.cell(row=atual, column=coluna).alignment = ESQUERDA
+        planilha.cell(row=atual, column=6).font = F_FORTE
+        planilha.cell(row=atual, column=6).alignment = CENTRO
+        planilha.cell(row=atual, column=7).font = F_CORPO
+        planilha.cell(row=atual, column=7).alignment = CENTRO
+
+    planilha.conditional_formatting.add(
+        f"C{primeira_detalhe}:C{ultima_detalhe}",
+        CellIsRule(operator="equal", formula=['"adiado"'],
+                   fill=PatternFill("solid", fgColor=DESTAQUE_SUAVE),
+                   font=Font(name=FONTE, size=9, bold=True, color=AMBAR)))
+
+    larguras(planilha, [8, 11, 10, 18, 18, 9, 8, 8, 8, 8, 8, 10, 8, 7, 8, 11, 9,
+                        23, 8, 7])
+    planilha.freeze_panes = planilha.cell(row=primeira_detalhe, column=4).coordinate
+    planilha.auto_filter.ref = (f"A{primeira_detalhe - 1}:"
+                                f"{get_column_letter(len(rotulos))}{ultima_detalhe}")
+    nota_rodape(planilha, ultima_detalhe + 2,
+                "'Odd fav.' é a odd justa do desfecho mais provável da partida.",
+                len(rotulos))
+    return planilha
+
+
+# ---------------------------------------------------------------------------
+# Abas de mercado: cada linha de aposta vira um par probabilidade + odd justa
+# ---------------------------------------------------------------------------
+
+def aba_mercado(livro, previsoes, titulo, cor, subtitulo, mercados,
+                numericos=None, aviso=None):
+    """
+    ``mercados`` é uma lista de (rótulo, campo). Cada um ocupa duas colunas:
+    a probabilidade e a odd justa, esta última por fórmula.
+    ``numericos`` são campos mostrados como número puro (gols, escanteios),
+    sem odd ao lado.
+    """
+    planilha = preparar_aba(livro, titulo, cor)
+    numericos = numericos or []
+    n_fixas = 4 + len(numericos)
+    total_colunas = n_fixas + 2 * len(mercados)
+    bloco_titulo(planilha, titulo.upper(), subtitulo, total_colunas)
+
+    linha_grupo = 4
+    grupos = [("JOGO", 1, 4, COR_JOGO)]
+    if numericos:
+        grupos.append(("ESPERADO", 5, len(numericos), COR_JOGO))
+    cor_alternada = escurecer(cor)
+    for indice, (rotulo, _) in enumerate(mercados):
+        # Vizinhos em tons diferentes: sem isso os pares Prob./Odd viram uma
+        # barra contínua e a vista perde onde um mercado acaba e o outro começa.
+        grupos.append((rotulo, n_fixas + 1 + 2 * indice, 2,
+                       cor if indice % 2 == 0 else cor_alternada))
+    cabecalho_grupos(planilha, linha_grupo, grupos)
+
+    rotulos = ["Rodada", "Data", "Mandante", "Visitante"]
+    rotulos += [rotulo for rotulo, _ in numericos]
+    for _ in mercados:
+        rotulos += ["Prob.", "Odd justa"]
+    cabecalho_colunas(planilha, linha_grupo + 1, rotulos)
+
+    primeira = linha_grupo + 2
+    ordenado = previsoes.sort_values(["Rodada", "Data", "Mandante"])
+    for deslocamento, registro in enumerate(ordenado.itertuples(index=False)):
+        linha = primeira + deslocamento
+        planilha.cell(row=linha, column=1, value=registro.Rodada)
+        planilha.cell(row=linha, column=2, value=registro.Data)
+        planilha.cell(row=linha, column=3, value=registro.Mandante)
+        planilha.cell(row=linha, column=4, value=registro.Visitante)
+        for indice, (_, campo) in enumerate(numericos):
+            planilha.cell(row=linha, column=5 + indice, value=getattr(registro, campo))
+        for indice, (_, campo) in enumerate(mercados):
+            coluna_prob = n_fixas + 1 + 2 * indice
+            planilha.cell(row=linha, column=coluna_prob, value=getattr(registro, campo))
+            letra = get_column_letter(coluna_prob)
+            planilha.cell(row=linha, column=coluna_prob + 1,
+                          value=f'=IFERROR(1/{letra}{linha},"")')
+
+    ultima = primeira + len(ordenado) - 1
+    bandas(planilha, primeira, ultima, total_colunas)
+    colunas_prob = [n_fixas + 1 + 2 * i for i in range(len(mercados))]
+    escala_probabilidade(planilha, primeira, ultima, colunas_prob)
+    coluna_odd(planilha, primeira, ultima, [c + 1 for c in colunas_prob])
+    if numericos:
+        coluna_numero(planilha, primeira, ultima,
+                      list(range(5, 5 + len(numericos))))
+    for linha in range(primeira, ultima + 1):
+        planilha.cell(row=linha, column=1).font = F_FORTE
+        planilha.cell(row=linha, column=1).alignment = CENTRO
+        planilha.cell(row=linha, column=2).number_format = DATA_BR
+        planilha.cell(row=linha, column=2).font = F_CORPO
+        planilha.cell(row=linha, column=2).alignment = CENTRO
+        for coluna in (3, 4):
+            planilha.cell(row=linha, column=coluna).font = F_CORPO
+            planilha.cell(row=linha, column=coluna).alignment = ESQUERDA
+
+    larguras(planilha, [8, 11, 18, 18] + [11] * len(numericos)
+             + [8, 9] * len(mercados))
+    planilha.freeze_panes = planilha.cell(row=primeira, column=5).coordinate
+    planilha.auto_filter.ref = (f"A{linha_grupo + 1}:"
+                                f"{get_column_letter(total_colunas)}{ultima}")
     if aviso:
-        planilha["A1"] = aviso
-        planilha["A1"].font = FONTE_AVISO
-        planilha["A1"].fill = FUNDO_AVISO
-        planilha.merge_cells(start_row=1, start_column=1, end_row=1,
-                             end_column=len(colunas) + 3)
-        for coluna in range(1, len(colunas) + 4):
-            planilha.cell(row=1, column=coluna).fill = FUNDO_AVISO
-        primeira = 3
-
-    cabecalhos = ["Nº", "Mandante", "Visitante"] + [c for c, _ in colunas]
-    escrever_cabecalho(planilha, cabecalhos, linha=primeira)
-
-    for indice, registro in enumerate(previsoes.itertuples(index=False),
-                                      start=primeira + 1):
-        planilha.cell(row=indice, column=1, value=registro.n)
-        planilha.cell(row=indice, column=2, value=registro.Mandante)
-        planilha.cell(row=indice, column=3, value=registro.Visitante)
-        for deslocamento, (_, campo) in enumerate(colunas, start=4):
-            planilha.cell(row=indice, column=deslocamento,
-                          value=getattr(registro, campo))
-
-    ultima = primeira + len(previsoes)
-    formatos = formatos or {}
-    colunas_percentuais = [4 + i for i, (_, campo) in enumerate(colunas)
-                           if formatos.get(campo, "pct") == "pct"]
-    faixa_percentual(planilha, primeira + 1, ultima, colunas_percentuais)
-    for i, (_, campo) in enumerate(colunas):
-        if formatos.get(campo) == "num":
-            for linha in range(primeira + 1, ultima + 1):
-                planilha.cell(row=linha, column=4 + i).number_format = DECIMAL
-
-    for linha in range(primeira + 1, ultima + 1):
-        for coluna in range(1, len(cabecalhos) + 1):
-            planilha.cell(row=linha, column=coluna).font = FONTE_NORMAL
-            planilha.cell(row=linha, column=coluna).border = BORDA_FINA
-
-    ajustar_larguras(planilha, [5, 17, 17] + [11] * len(colunas))
-    planilha.freeze_panes = planilha.cell(row=primeira + 1, column=4).coordinate
-    planilha.auto_filter.ref = (f"A{primeira}:"
-                                f"{get_column_letter(len(cabecalhos))}{ultima}")
+        nota_rodape(planilha, ultima + 2, aviso, total_colunas)
     return planilha
 
 
@@ -604,399 +962,304 @@ MERCADOS_CALCULADORA = [
 ]
 
 
-def aba_base_calculadora(livro, previsoes):
+def aba_dados(livro, previsoes):
     """Matriz partida x mercado que alimenta a calculadora (aba de apoio)."""
     planilha = livro.create_sheet("Dados")
     planilha["A1"] = "Partida"
     for coluna, (rotulo, _) in enumerate(MERCADOS_CALCULADORA, start=2):
         planilha.cell(row=1, column=coluna, value=rotulo)
-
-    for linha, registro in enumerate(previsoes.itertuples(index=False), start=2):
+    ordenado = previsoes.sort_values(["Rodada", "Data", "Mandante"])
+    for linha, registro in enumerate(ordenado.itertuples(index=False), start=2):
         planilha.cell(row=linha, column=1,
                       value=f"{registro.Mandante} x {registro.Visitante}")
         for coluna, (_, campo) in enumerate(MERCADOS_CALCULADORA, start=2):
             planilha.cell(row=linha, column=coluna, value=getattr(registro, campo))
-            planilha.cell(row=linha, column=coluna).number_format = PERCENTUAL
-
-    ajustar_larguras(planilha, [34] + [16] * len(MERCADOS_CALCULADORA))
+            planilha.cell(row=linha, column=coluna).number_format = PCT
+    larguras(planilha, [34] + [16] * len(MERCADOS_CALCULADORA))
     planilha.sheet_state = "hidden"
     return planilha
 
 
 def aba_calculadora(livro, previsoes):
-    """Calculadora de valor: fórmulas vivas, o usuário só digita a cotação."""
-    planilha = livro.create_sheet("Calculadora")
-    planilha.sheet_view.showGridLines = False
-    ajustar_larguras(planilha, [3, 38, 20, 16, 16, 16, 16, 16])
+    """Calculadora de valor: o usuário só escolhe nas listas e digita a cotação."""
+    planilha = preparar_aba(livro, "Calculadora", COR_DESTAQUE)
+    larguras(planilha, [2, 30, 26, 3, 13, 13, 13, 15, 10])
 
     n = len(previsoes)
     ultima_coluna = get_column_letter(1 + len(MERCADOS_CALCULADORA))
 
-    planilha["B2"] = "CALCULADORA DE VALOR DA APOSTA"
-    planilha["B2"].font = FONTE_TITULO
+    planilha["B2"] = "CALCULADORA DE VALOR"
+    planilha["B2"].font = Font(name=FONTE, size=20, bold=True, color=TINTA_TITULO)
+    planilha.row_dimensions[2].height = 28
     planilha["B3"] = ("Escolha a partida e o mercado nas listas, digite a cotação "
-                      "que a casa oferece na célula amarela e leia o veredicto.")
-    planilha["B3"].font = FONTE_SUBTITULO
+                      "da casa no campo amarelo e leia o veredicto.")
+    planilha["B3"].font = F_SUBTITULO
+    planilha.merge_cells("B3:I3")
 
-    rotulos = [
-        ("B5", "Partida", None),
-        ("B6", "Mercado", None),
-        ("B7", "Probabilidade do modelo", f"=IFERROR(INDEX(Dados!$B$2:${ultima_coluna}${n+1},"
-                                          f"MATCH($C$5,Dados!$A$2:$A${n+1},0),"
-                                          f"MATCH($C$6,Dados!$B$1:${ultima_coluna}$1,0)),\"\")"),
-        ("B8", "Cotação mínima (equilíbrio)", '=IFERROR(1/$C$7,"")'),
-        ("B9", "Cotação oferecida pela casa", None),
-        ("B10", "Valor esperado por real apostado", '=IFERROR($C$7*$C$9-1,"")'),
-        ("B11", "Vantagem sobre o preço", '=IFERROR($C$7-1/$C$9,"")'),
-        ("B12", "Lucro se vier green (por R$ 1)", '=IFERROR($C$9-1,"")'),
-        ("B13", "Veredicto",
-         '=IF($C$7="","preencha os campos",'
-         'IF($C$9="","digite a cotação",'
-         'IF($C$10>0,"COTAÇÃO ACIMA DO EQUILÍBRIO","cotação abaixo do equilíbrio")))'),
-        ("B14", "Resultado esperado em 100 apostas de R$ 10",
-         '=IFERROR($C$10*1000,"")'),
+    planilha["B5"] = "1. O QUE VOCÊ VAI APOSTAR"
+    planilha["B5"].font = F_SECAO
+    planilha["B9"] = "2. QUANTO A CASA PAGA"
+    planilha["B9"].font = F_SECAO
+    planilha["B12"] = "3. VEREDICTO"
+    planilha["B12"].font = F_SECAO
+
+    campos = [
+        (6, "Partida", None, True),
+        (7, "Mercado", None, True),
+        (8, "Probabilidade do modelo",
+         f"=IFERROR(INDEX(Dados!$B$2:${ultima_coluna}${n + 1},"
+         f"MATCH($C$6,Dados!$A$2:$A${n + 1},0),"
+         f"MATCH($C$7,Dados!$B$1:${ultima_coluna}$1,0)),\"\")", False),
+        (10, "Odd justa (equilíbrio)", '=IFERROR(1/$C$8,"")', False),
+        (11, "Cotação oferecida", None, True),
+        (13, "Valor esperado por real", '=IFERROR($C$8*$C$11-1,"")', False),
+        (14, "Vantagem sobre o preço", '=IFERROR($C$8-1/$C$11,"")', False),
+        (15, "Lucro se vier green", '=IFERROR($C$11-1,"")', False),
+        (16, "Em 100 apostas de R$ 10", '=IFERROR($C$13*1000,"")', False),
     ]
-    for celula, rotulo, formula in rotulos:
-        planilha[celula] = rotulo
-        planilha[celula].font = FONTE_NEGRITO
-        destino = celula.replace("B", "C")
+    for linha, rotulo, formula, entrada in campos:
+        celula_rotulo = planilha.cell(row=linha, column=2, value=rotulo)
+        celula_rotulo.font = F_FORTE if not entrada else Font(
+            name=FONTE, size=10, bold=True, color=TINTA_PRIMARIA)
+        celula_rotulo.alignment = ESQUERDA
+        celula = planilha.cell(row=linha, column=3)
         if formula:
-            planilha[destino] = formula
-        planilha[destino].font = FONTE_NORMAL
+            celula.value = formula
+        celula.alignment = CENTRO
+        planilha.row_dimensions[linha].height = 20
+        if entrada:
+            celula.fill = PatternFill("solid", fgColor="FFF3B0")
+            celula.font = Font(name=FONTE, size=10, bold=True, color="1A3E7A")
+            celula.border = Border(*[Side(style="thin", color="D9A400")] * 4)
+        else:
+            celula.font = F_CORPO
+            celula.fill = PatternFill("solid", fgColor=CARTAO)
 
-    planilha["C5"] = f"{previsoes.iloc[0]['Mandante']} x {previsoes.iloc[0]['Visitante']}"
-    planilha["C6"] = MERCADOS_CALCULADORA[2][0]
-    planilha["C9"] = 3.0
-    for entrada in ("C5", "C6", "C9"):
-        planilha[entrada].fill = FUNDO_ENTRADA
-        planilha[entrada].font = Font(name=FONTE, size=10, bold=True, color="0000FF")
-        planilha[entrada].border = BORDA_FINA
+    planilha["C6"] = (f"{previsoes.iloc[0]['Mandante']} x "
+                      f"{previsoes.iloc[0]['Visitante']}")
+    planilha["C7"] = MERCADOS_CALCULADORA[2][0]
+    planilha["C11"] = 3.0
 
-    planilha["C7"].number_format = PERCENTUAL
-    for celula in ("C8", "C9", "C12"):
-        planilha[celula].number_format = COTACAO
-    for celula in ("C10", "C11"):
+    planilha["C8"].number_format = PCT
+    for celula in ("C10", "C11", "C15"):
+        planilha[celula].number_format = ODD
+    for celula in ("C13", "C14"):
         planilha[celula].number_format = "0.0%"
-    planilha["C14"].number_format = 'R$ #,##0.00;[Red]-R$ #,##0.00'
-    planilha["C13"].font = FONTE_NEGRITO
+    planilha["C16"].number_format = 'R$ #,##0.00;[Red]-R$ #,##0.00'
 
-    planilha.conditional_formatting.add("C10", CellIsRule(
-        operator="greaterThan", formula=["0"],
-        font=Font(name=FONTE, size=10, bold=True, color="1B7A4A")))
-    planilha.conditional_formatting.add("C10", CellIsRule(
-        operator="lessThanOrEqual", formula=["0"],
-        font=Font(name=FONTE, size=10, bold=True, color="A32020")))
+    veredicto = planilha.cell(row=17, column=2, value="Resultado")
+    veredicto.font = F_FORTE
+    celula_veredicto = planilha.cell(row=17, column=3)
+    celula_veredicto.value = (
+        '=IF($C$8="","preencha os campos",'
+        'IF($C$11="","digite a cotação",'
+        'IF($C$13>0,"PAGA ACIMA DA ODD JUSTA","paga abaixo da odd justa")))')
+    celula_veredicto.font = Font(name=FONTE, size=11, bold=True)
+    celula_veredicto.alignment = CENTRO
+    planilha.row_dimensions[17].height = 24
+    planilha.conditional_formatting.add("C17", CellIsRule(
+        operator="equal", formula=['"PAGA ACIMA DA ODD JUSTA"'],
+        fill=PatternFill("solid", fgColor="D6F0E0"),
+        font=Font(name=FONTE, size=11, bold=True, color=VERDE)))
+    planilha.conditional_formatting.add("C17", CellIsRule(
+        operator="equal", formula=['"paga abaixo da odd justa"'],
+        fill=PatternFill("solid", fgColor="FBE0E0"),
+        font=Font(name=FONTE, size=11, bold=True, color=VERMELHO)))
+    for celula, cor_boa, cor_ruim in (("C13", VERDE, VERMELHO), ("C14", VERDE, VERMELHO)):
+        planilha.conditional_formatting.add(celula, CellIsRule(
+            operator="greaterThan", formula=["0"],
+            font=Font(name=FONTE, size=10, bold=True, color=cor_boa)))
+        planilha.conditional_formatting.add(celula, CellIsRule(
+            operator="lessThanOrEqual", formula=["0"],
+            font=Font(name=FONTE, size=10, bold=True, color=cor_ruim)))
 
-    # As listas apontam para INTERVALOS NOMEADOS em vez de referenciar a aba
-    # oculta diretamente: algumas versões do Excel recusam validação de dados
-    # que aponta para outra planilha sem passar por um nome definido.
-    livro_atual = planilha.parent
-    livro_atual.defined_names.add(
-        DefinedName("Lista_Partidas", attr_text=f"Dados!$A$2:$A${n+1}"))
-    livro_atual.defined_names.add(
+    livro.defined_names.add(
+        DefinedName("Lista_Partidas", attr_text=f"Dados!$A$2:$A${n + 1}"))
+    livro.defined_names.add(
         DefinedName("Lista_Mercados", attr_text=f"Dados!$B$1:${ultima_coluna}$1"))
-
     validacao_partida = DataValidation(type="list", formula1="=Lista_Partidas",
                                        allow_blank=False)
     planilha.add_data_validation(validacao_partida)
-    validacao_partida.add(planilha["C5"])
-
+    validacao_partida.add(planilha["C6"])
     validacao_mercado = DataValidation(type="list", formula1="=Lista_Mercados",
                                        allow_blank=False)
     planilha.add_data_validation(validacao_mercado)
-    validacao_mercado.add(planilha["C6"])
+    validacao_mercado.add(planilha["C7"])
 
-    linha = 17
-    planilha.cell(row=linha, column=2,
-                  value="O QUE MUDA QUANDO A COTAÇÃO MUDA (mesma partida e mercado)")
-    planilha.cell(row=linha, column=2).font = Font(name=FONTE, size=12, bold=True)
+    # --- tabela lateral: a mesma aposta em várias cotações -------------------
+    linha = 5
+    planilha.cell(row=linha, column=5,
+                  value="A MESMA APOSTA EM VÁRIAS COTAÇÕES").font = F_SECAO
+    planilha.merge_cells(start_row=linha, start_column=5, end_row=linha, end_column=9)
     linha += 1
-    planilha.cell(row=linha, column=2,
-                  value="Repare que a chance de acertar é a MESMA em todas as linhas. "
-                        "O que muda é o preço.")
-    planilha.cell(row=linha, column=2).font = FONTE_SUBTITULO
+    planilha.cell(row=linha, column=5,
+                  value="A chance de acertar é a MESMA em todas as linhas. "
+                        "O que muda é o preço.").font = F_SUBTITULO
+    planilha.merge_cells(start_row=linha, start_column=5, end_row=linha, end_column=9)
     linha += 2
-
-    escrever_cabecalho_simulacao = ["Cotação", "Chance de green", "Valor esperado",
-                                    "Lucro se green", "Vale a pena?"]
-    for coluna, texto in enumerate(escrever_cabecalho_simulacao, start=2):
-        celula = planilha.cell(row=linha, column=coluna, value=texto)
-        celula.font = FONTE_CABECALHO
-        celula.fill = FUNDO_CABECALHO
-        celula.alignment = Alignment(horizontal="center")
+    cabecalho_grupos(planilha, linha, [("SIMULAÇÃO", 5, 5, COR_DESTAQUE)])
+    linha += 1
+    for deslocamento, rotulo in enumerate(
+            ["Cotação", "Chance", "Valor esp.", "Lucro se green", "Vale?"]):
+        celula = planilha.cell(row=linha, column=5 + deslocamento, value=rotulo)
+        celula.font = F_COLUNA
+        celula.alignment = CENTRO
+        celula.border = REGUA_COLUNA
     primeira_simulacao = linha + 1
-
     for deslocamento, cotacao in enumerate([1.2, 1.5, 1.8, 2.0, 2.5, 3.0, 4.0,
                                             5.0, 7.0, 10.0]):
         atual = primeira_simulacao + deslocamento
-        planilha.cell(row=atual, column=2, value=cotacao).number_format = COTACAO
-        planilha.cell(row=atual, column=3, value="=$C$7").number_format = PERCENTUAL
-        planilha.cell(row=atual, column=4,
-                      value=f"=IFERROR($C$7*B{atual}-1,\"\")").number_format = "0.0%"
-        planilha.cell(row=atual, column=5,
-                      value=f"=B{atual}-1").number_format = COTACAO
-        planilha.cell(row=atual, column=6,
-                      value=f'=IF(D{atual}="","",IF(D{atual}>0,"sim","não"))')
-        for coluna in range(2, 7):
-            planilha.cell(row=atual, column=coluna).font = FONTE_NORMAL
-            planilha.cell(row=atual, column=coluna).border = BORDA_FINA
-
+        planilha.cell(row=atual, column=5, value=cotacao).number_format = ODD
+        planilha.cell(row=atual, column=6, value="=$C$8").number_format = PCT
+        planilha.cell(row=atual, column=7,
+                      value=f'=IFERROR($C$8*E{atual}-1,"")').number_format = "0.0%"
+        planilha.cell(row=atual, column=8, value=f"=E{atual}-1").number_format = ODD
+        planilha.cell(row=atual, column=9,
+                      value=f'=IF(G{atual}="","",IF(G{atual}>0,"sim","não"))')
+        for coluna in range(5, 10):
+            planilha.cell(row=atual, column=coluna).font = F_CORPO
+            planilha.cell(row=atual, column=coluna).alignment = CENTRO
     ultima_simulacao = primeira_simulacao + 9
+    bandas(planilha, primeira_simulacao, ultima_simulacao, 9)
     planilha.conditional_formatting.add(
-        f"D{primeira_simulacao}:D{ultima_simulacao}",
+        f"G{primeira_simulacao}:G{ultima_simulacao}",
         CellIsRule(operator="greaterThan", formula=["0"],
-                   fill=PatternFill("solid", fgColor="D6F0E0")))
+                   fill=PatternFill("solid", fgColor="D6F0E0"),
+                   font=Font(name=FONTE, size=10, color=VERDE)))
     planilha.conditional_formatting.add(
-        f"D{primeira_simulacao}:D{ultima_simulacao}",
+        f"G{primeira_simulacao}:G{ultima_simulacao}",
         CellIsRule(operator="lessThanOrEqual", formula=["0"],
-                   fill=PatternFill("solid", fgColor="FBE0E0")))
+                   fill=PatternFill("solid", fgColor="FBE0E0"),
+                   font=Font(name=FONTE, size=10, color=VERMELHO)))
 
-    aviso = planilha.cell(row=ultima_simulacao + 2, column=2)
-    aviso.value = ("Lembrete: valor esperado positivo segundo o modelo não garante lucro. "
-                   "No teste histórico do projeto, apostar só onde o modelo via vantagem "
-                   "deu retorno PIOR do que apostar em tudo.")
-    aviso.font = FONTE_AVISO
-    planilha.merge_cells(start_row=ultima_simulacao + 2, start_column=2,
-                         end_row=ultima_simulacao + 2, end_column=8)
+    nota_rodape(planilha, ultima_simulacao + 2,
+                "Lembrete: valor esperado positivo segundo o modelo não garante lucro. "
+                "No teste histórico do projeto, apostar só onde o modelo via vantagem "
+                "rendeu PIOR do que apostar em tudo.", 9)
     return planilha
 
 
+# ---------------------------------------------------------------------------
+# Abas de apoio
+# ---------------------------------------------------------------------------
+
 def aba_confiabilidade(livro, confiabilidade):
-    planilha = livro.create_sheet("Confiabilidade")
-    planilha.sheet_view.showGridLines = False
-    ajustar_larguras(planilha, [30, 14, 12, 12, 14, 12, 58])
+    planilha = preparar_aba(livro, "Confiabilidade", COR_JOGO)
+    bloco_titulo(planilha, "QUANTO CADA MERCADO ERRA",
+                 "Viés = previsto menos observado, medido FORA DA AMOSTRA: o modelo "
+                 "treina até a temporada anterior e é conferido na seguinte. "
+                 "Negativo significa que o modelo subestima o mercado.", 7)
 
-    planilha["A1"] = "QUANTO CADA MERCADO ERRA"
-    planilha["A1"].font = FONTE_TITULO
-    planilha["A2"] = ("Viés = previsto menos observado, medido FORA DA AMOSTRA: o modelo "
-                      "treina até a temporada anterior e é conferido na seguinte. "
-                      "Negativo significa que o modelo subestima o mercado.")
-    planilha["A2"].font = FONTE_SUBTITULO
-    planilha.merge_cells("A2:G2")
-
-    cabecalhos = list(confiabilidade.columns)
-    escrever_cabecalho(planilha, cabecalhos, linha=4)
-    for linha, registro in enumerate(confiabilidade.itertuples(index=False), start=5):
+    linha = 4
+    cabecalho_grupos(planilha, linha, [
+        ("MERCADO", 1, 1, COR_JOGO), ("MEDIDO FORA DA AMOSTRA", 2, 4, COR_RESULTADO),
+        ("LEITURA", 6, 2, COR_DESTAQUE)])
+    cabecalho_colunas(planilha, linha + 1,
+                      ["Mercado", "Previsto", "Observado", "Viés (p.p.)",
+                       "Partidas", "Confiança", "Observação"])
+    primeira = linha + 2
+    for deslocamento, registro in enumerate(confiabilidade.itertuples(index=False)):
+        atual = primeira + deslocamento
         for coluna, valor in enumerate(registro, start=1):
-            celula = planilha.cell(row=linha, column=coluna, value=valor)
-            celula.font = FONTE_NORMAL
-            celula.border = BORDA_FINA
-        planilha.cell(row=linha, column=2).number_format = PERCENTUAL
-        planilha.cell(row=linha, column=3).number_format = PERCENTUAL
-        planilha.cell(row=linha, column=4).number_format = "+0.00;-0.00"
-        planilha.cell(row=linha, column=7).alignment = Alignment(wrap_text=True,
-                                                                 vertical="top")
-    ultima = 4 + len(confiabilidade)
-    planilha.conditional_formatting.add(f"D5:D{ultima}", CellIsRule(
+            planilha.cell(row=atual, column=coluna, value=valor)
+    ultima = primeira + len(confiabilidade) - 1
+
+    bandas(planilha, primeira, ultima, 7, altura=26)
+    escala_probabilidade(planilha, primeira, ultima, [2, 3])
+    for atual in range(primeira, ultima + 1):
+        planilha.cell(row=atual, column=1).font = F_FORTE
+        planilha.cell(row=atual, column=1).alignment = ESQUERDA
+        celula = planilha.cell(row=atual, column=4)
+        celula.number_format = "+0.00;-0.00"
+        celula.font = F_CORPO
+        celula.alignment = CENTRO
+        planilha.cell(row=atual, column=5).font = F_CORPO
+        planilha.cell(row=atual, column=5).alignment = CENTRO
+        planilha.cell(row=atual, column=6).alignment = CENTRO
+        planilha.cell(row=atual, column=6).font = F_FORTE
+        observacao = planilha.cell(row=atual, column=7)
+        observacao.font = F_NOTA
+        observacao.alignment = Alignment(wrap_text=True, vertical="center")
+
+    planilha.conditional_formatting.add(f"D{primeira}:D{ultima}", CellIsRule(
         operator="lessThan", formula=["-3"],
-        fill=PatternFill("solid", fgColor="FBE0E0")))
-    planilha.conditional_formatting.add(f"F5:F{ultima}", CellIsRule(
-        operator="equal", formula=['"Baixa"'],
-        fill=PatternFill("solid", fgColor="FFF3CD")))
-    planilha.freeze_panes = "A5"
-    planilha.auto_filter.ref = f"A4:G{ultima}"
+        fill=PatternFill("solid", fgColor="FBE0E0"),
+        font=Font(name=FONTE, size=10, bold=True, color=VERMELHO)))
+    planilha.conditional_formatting.add(f"F{primeira}:F{ultima}", CellIsRule(
+        operator="equal", formula=['"Alta"'],
+        font=Font(name=FONTE, size=10, bold=True, color=VERDE)))
+    planilha.conditional_formatting.add(f"F{primeira}:F{ultima}", CellIsRule(
+        operator="equal", formula=['"Média"'],
+        font=Font(name=FONTE, size=10, bold=True, color=AMBAR)))
+
+    larguras(planilha, [30, 11, 11, 11, 11, 12, 62])
+    planilha.freeze_panes = planilha.cell(row=primeira, column=2).coordinate
+    planilha.auto_filter.ref = f"A{linha + 1}:G{ultima}"
     return planilha
 
 
 def aba_times(livro, contexto):
-    planilha = livro.create_sheet("Times")
-    planilha.sheet_view.showGridLines = False
-
+    planilha = preparar_aba(livro, "Times", COR_JOGO)
     modelo_gols = contexto["modelo_gols"]
     modelo_escanteios = contexto["modelo_escanteios"]
     modelo_cartoes = contexto["modelo_cartoes"]
-    times = contexto["times_2026"]
     classificacao = contexto["classificacao"].set_index("time")
 
     linhas = []
-    for time in times:
-        tem_stats = time in modelo_escanteios.feito
+    for time in contexto["times_2026"]:
         linhas.append({
             "Time": time,
-            "Posição": int(classificacao.loc[time, "posicao"]),
+            "Pos.": int(classificacao.loc[time, "posicao"]),
             "Pontos": int(classificacao.loc[time, "pontos"]),
-            "Ataque (gols)": float(np.exp(modelo_gols.ataque.get(time, 0.0))),
-            "Defesa (gols)": float(np.exp(modelo_gols.defesa.get(time, 0.0))),
-            "Escanteios a favor": float(np.exp(modelo_escanteios.feito.get(time, 0.0))),
-            "Escanteios contra": float(np.exp(modelo_escanteios.sofrido.get(time, 0.0))),
-            "Cartões tomados": float(np.exp(modelo_cartoes.feito.get(time, 0.0))),
-            "Histórico de estatísticas?": "sim" if tem_stats else "NÃO (usa média da liga)",
+            "Ataque": float(np.exp(modelo_gols.ataque.get(time, 0.0))),
+            "Defesa": float(np.exp(modelo_gols.defesa.get(time, 0.0))),
+            "Esc. a favor": float(np.exp(modelo_escanteios.feito.get(time, 0.0))),
+            "Esc. contra": float(np.exp(modelo_escanteios.sofrido.get(time, 0.0))),
+            "Cartões": float(np.exp(modelo_cartoes.feito.get(time, 0.0))),
         })
-    tabela = pd.DataFrame(linhas).sort_values("Posição")
+    tabela = pd.DataFrame(linhas).sort_values("Pos.")
 
-    planilha["A1"] = "FORÇA DOS CLUBES"
-    planilha["A1"].font = FONTE_TITULO
-    planilha["A2"] = ("Valores relativos à média da liga: 1,00 é a média. Ataque acima de "
-                      "1,00 marca mais que a média; defesa abaixo de 1,00 sofre menos. "
-                      "Escanteios e cartões vêm da base 2015-2023.")
-    planilha["A2"].font = FONTE_SUBTITULO
-    planilha.merge_cells("A2:I2")
-
-    escrever_cabecalho(planilha, list(tabela.columns), linha=4)
-    for linha, registro in enumerate(tabela.itertuples(index=False), start=5):
-        for coluna, valor in enumerate(registro, start=1):
-            celula = planilha.cell(row=linha, column=coluna, value=valor)
-            celula.font = FONTE_NORMAL
-            celula.border = BORDA_FINA
-            if coluna in (4, 5, 6, 7, 8):
-                celula.number_format = DECIMAL
-    ultima = 4 + len(tabela)
-    for coluna in (4, 6, 8):
-        letra = get_column_letter(coluna)
-        planilha.conditional_formatting.add(
-            f"{letra}5:{letra}{ultima}",
-            ColorScaleRule(start_type="min", start_color=BRANCO,
-                           end_type="max", end_color=AZUL_CLARO))
-    planilha.conditional_formatting.add(f"I5:I{ultima}", CellIsRule(
-        operator="notEqual", formula=['"sim"'],
-        fill=PatternFill("solid", fgColor="FFF3CD")))
-    ajustar_larguras(planilha, [18, 10, 9, 14, 14, 18, 18, 16, 26])
-    planilha.freeze_panes = "A5"
-    return planilha
-
-
-def aba_rodadas(livro, previsoes):
-    """
-    Previsões organizadas pelo calendário oficial: um resumo por rodada e, em
-    seguida, os jogos de cada rodada em ordem.
-    """
-    planilha = livro.create_sheet("Rodadas")
-    planilha.sheet_view.showGridLines = False
-
-    com_rodada = previsoes.dropna(subset=["Rodada"]).copy()
-    com_rodada["Rodada"] = com_rodada["Rodada"].astype(int)
-
-    planilha["A1"] = "PREVISÕES RODADA A RODADA"
-    planilha["A1"].font = FONTE_TITULO
-    planilha["A2"] = (f"{len(com_rodada)} partidas em "
-                      f"{com_rodada['Rodada'].nunique()} rodadas, na ordem do "
-                      "calendário oficial. Jogos marcados como ADIADO estão na "
-                      "rodada original e a data já passou: vale a rodada, não a data.")
-    planilha["A2"].font = FONTE_SUBTITULO
-    planilha.merge_cells("A2:J2")
-
-    # --- Resumo por rodada -------------------------------------------------
-    resumo = (com_rodada.groupby("Rodada")
-              .agg(jogos=("n", "size"),
-                   primeira_data=("Data", "min"), ultima_data=("Data", "max"),
-                   gols_esperados=("gols_esperados_total", "mean"),
-                   vitorias_mandante=("prob_H", "mean"),
-                   empates=("prob_D", "mean"),
-                   over_25=("mais_de_2_5", "mean"),
-                   ambas=("prob_ambas_marcam", "mean"),
-                   escanteios=("escanteios_total", "mean"),
-                   cartoes=("cartoes_total", "mean"))
-              .reset_index())
+    bloco_titulo(planilha, "FORÇA DOS CLUBES",
+                 "Valores relativos à média da liga, onde 1,00 é a média. Ataque acima "
+                 "de 1,00 marca mais que a média; defesa abaixo de 1,00 sofre menos. "
+                 "Escanteios e cartões vêm da base 2015-2026.", 8)
 
     linha = 4
-    planilha.cell(row=linha, column=1, value="RESUMO POR RODADA").font = Font(
-        name=FONTE, size=12, bold=True)
-    linha += 1
-    cabecalhos_resumo = ["Rodada", "Jogos", "De", "Até", "Gols esp. médios",
-                         "Mandante vence", "Empate", "+2,5 gols", "Ambas marcam",
-                         "Escanteios", "Cartões"]
-    escrever_cabecalho(planilha, cabecalhos_resumo, linha=linha)
-    primeira_resumo = linha + 1
-    for deslocamento, registro in enumerate(resumo.itertuples(index=False)):
-        atual = primeira_resumo + deslocamento
-        planilha.cell(row=atual, column=1, value=registro.Rodada)
-        planilha.cell(row=atual, column=2, value=registro.jogos)
-        planilha.cell(row=atual, column=3, value=registro.primeira_data)
-        planilha.cell(row=atual, column=4, value=registro.ultima_data)
-        planilha.cell(row=atual, column=5, value=registro.gols_esperados)
-        planilha.cell(row=atual, column=6, value=registro.vitorias_mandante)
-        planilha.cell(row=atual, column=7, value=registro.empates)
-        planilha.cell(row=atual, column=8, value=registro.over_25)
-        planilha.cell(row=atual, column=9, value=registro.ambas)
-        planilha.cell(row=atual, column=10, value=registro.escanteios)
-        planilha.cell(row=atual, column=11, value=registro.cartoes)
-        for coluna in range(1, 12):
-            planilha.cell(row=atual, column=coluna).font = FONTE_NORMAL
-            planilha.cell(row=atual, column=coluna).border = BORDA_FINA
-        for coluna in (3, 4):
-            planilha.cell(row=atual, column=coluna).number_format = "DD/MM/YYYY"
-        for coluna in (5, 10, 11):
-            planilha.cell(row=atual, column=coluna).number_format = DECIMAL
-    ultima_resumo = primeira_resumo + len(resumo) - 1
-    faixa_percentual(planilha, primeira_resumo, ultima_resumo, [6, 7, 8, 9])
+    cabecalho_grupos(planilha, linha, [
+        ("CLUBE", 1, 3, COR_JOGO), ("GOLS", 4, 2, COR_GOLS),
+        ("ESCANTEIOS", 6, 2, COR_ESCANTEIOS), ("CARTÕES", 8, 1, COR_CARTOES)])
+    cabecalho_colunas(planilha, linha + 1, list(tabela.columns))
+    primeira = linha + 2
+    for deslocamento, registro in enumerate(tabela.itertuples(index=False)):
+        atual = primeira + deslocamento
+        for coluna, valor in enumerate(registro, start=1):
+            planilha.cell(row=atual, column=coluna, value=valor)
+    ultima = primeira + len(tabela) - 1
 
-    # Total geral, como fórmula sobre o próprio resumo.
-    total = ultima_resumo + 1
-    planilha.cell(row=total, column=1, value="TODAS").font = FONTE_NEGRITO
-    planilha.cell(row=total, column=2,
-                  value=f"=SUM(B{primeira_resumo}:B{ultima_resumo})").font = FONTE_NEGRITO
-    for coluna in (5, 6, 7, 8, 9, 10, 11):
+    bandas(planilha, primeira, ultima, 8, altura=20)
+    coluna_numero(planilha, primeira, ultima, [4, 5, 6, 7, 8])
+    for atual in range(primeira, ultima + 1):
+        planilha.cell(row=atual, column=1).font = F_FORTE
+        planilha.cell(row=atual, column=1).alignment = ESQUERDA
+        for coluna in (2, 3):
+            planilha.cell(row=atual, column=coluna).font = F_CORPO
+            planilha.cell(row=atual, column=coluna).alignment = CENTRO
+
+    # Ataque e escanteios a favor: mais é melhor. Defesa e cartões: menos é melhor.
+    for coluna, invertido in ((4, False), (5, True), (6, False), (7, True), (8, True)):
         letra = get_column_letter(coluna)
-        celula = planilha.cell(
-            row=total, column=coluna,
-            value=f"=AVERAGE({letra}{primeira_resumo}:{letra}{ultima_resumo})")
-        celula.font = FONTE_NEGRITO
-        celula.number_format = DECIMAL if coluna in (5, 10, 11) else PERCENTUAL
-        celula.fill = FUNDO_SECAO
-    for coluna in (1, 2, 3, 4):
-        planilha.cell(row=total, column=coluna).fill = FUNDO_SECAO
+        planilha.conditional_formatting.add(
+            f"{letra}{primeira}:{letra}{ultima}",
+            ColorScaleRule(start_type="min",
+                           start_color=PROB_MAX if invertido else PROB_MIN,
+                           end_type="max",
+                           end_color=PROB_MIN if invertido else PROB_MAX))
 
-    # --- Jogo a jogo, agrupado por rodada ----------------------------------
-    linha = total + 3
-    planilha.cell(row=linha, column=1, value="JOGO A JOGO").font = Font(
-        name=FONTE, size=12, bold=True)
-    linha += 1
-    cabecalhos = ["Rodada", "Data", "Situação", "Mandante", "Visitante",
-                  "Palpite 1X2", "Placar", "Casa", "Empate", "Fora", "Gols esp.",
-                  "+2,5", "Ambas", "Escanteios", "Cartões",
-                  "Palpite mais seguro", "Chance"]
-    escrever_cabecalho(planilha, cabecalhos, linha=linha)
-    primeira_detalhe = linha + 1
-
-    atual = primeira_detalhe
-    for rodada in sorted(com_rodada["Rodada"].unique()):
-        jogos = com_rodada[com_rodada["Rodada"] == rodada]
-        for registro in jogos.itertuples(index=False):
-            planilha.cell(row=atual, column=1, value=registro.Rodada)
-            planilha.cell(row=atual, column=2, value=registro.Data)
-            planilha.cell(row=atual, column=3, value=registro.situacao)
-            planilha.cell(row=atual, column=4, value=registro.Mandante)
-            planilha.cell(row=atual, column=5, value=registro.Visitante)
-            planilha.cell(row=atual, column=6, value=registro.palpite_1x2)
-            planilha.cell(row=atual, column=7, value=registro.placar_mais_provavel)
-            planilha.cell(row=atual, column=8, value=registro.prob_H)
-            planilha.cell(row=atual, column=9, value=registro.prob_D)
-            planilha.cell(row=atual, column=10, value=registro.prob_A)
-            planilha.cell(row=atual, column=11, value=registro.gols_esperados_total)
-            planilha.cell(row=atual, column=12, value=registro.mais_de_2_5)
-            planilha.cell(row=atual, column=13, value=registro.prob_ambas_marcam)
-            planilha.cell(row=atual, column=14, value=registro.escanteios_total)
-            planilha.cell(row=atual, column=15, value=registro.cartoes_total)
-            planilha.cell(row=atual, column=16, value=registro.palpite_seguro)
-            planilha.cell(row=atual, column=17, value=registro.palpite_seguro_prob)
-            for coluna in range(1, 18):
-                planilha.cell(row=atual, column=coluna).font = FONTE_NORMAL
-                planilha.cell(row=atual, column=coluna).border = BORDA_FINA
-            planilha.cell(row=atual, column=2).number_format = "DD/MM/YYYY"
-            planilha.cell(row=atual, column=6).font = FONTE_NEGRITO
-            for coluna in (11, 14, 15):
-                planilha.cell(row=atual, column=coluna).number_format = DECIMAL
-            # Faixa alternada por rodada, para separar os blocos visualmente.
-            if rodada % 2 == 0:
-                for coluna in range(1, 18):
-                    planilha.cell(row=atual, column=coluna).fill = PatternFill(
-                        "solid", fgColor="F7FAFE")
-            atual += 1
-    ultima_detalhe = atual - 1
-    faixa_percentual(planilha, primeira_detalhe, ultima_detalhe,
-                     [8, 9, 10, 12, 13, 17])
-    # Destaca os jogos adiados: a data deles não vale mais, só a rodada.
-    planilha.conditional_formatting.add(
-        f"C{primeira_detalhe}:C{ultima_detalhe}",
-        CellIsRule(operator="equal", formula=['"adiado"'],
-                   fill=PatternFill("solid", fgColor="FFF3CD"),
-                   font=Font(name=FONTE, size=10, bold=True, color="9C6500")))
-
-    ajustar_larguras(planilha, [8, 12, 11, 17, 17, 12, 9, 8, 8, 8, 10, 8, 8, 11, 9,
-                                24, 9])
-    planilha.freeze_panes = planilha.cell(row=primeira_detalhe, column=4).coordinate
-    planilha.auto_filter.ref = (f"A{primeira_detalhe - 1}:"
-                                f"{get_column_letter(len(cabecalhos))}{ultima_detalhe}")
+    larguras(planilha, [20, 8, 10, 12, 12, 14, 14, 12])
+    planilha.freeze_panes = planilha.cell(row=primeira, column=2).coordinate
+    nota_rodape(planilha, ultima + 2,
+                "Azul mais forte = melhor naquele quesito. Em defesa e cartões, "
+                "melhor é ter o número mais baixo.", 8)
     return planilha
 
 
@@ -1009,7 +1272,7 @@ def main():
     previsoes, contexto = montar_previsoes()
     confiabilidade = medir_confiabilidade(contexto)
 
-    # Colunas derivadas usadas pela calculadora.
+    # Colunas derivadas usadas pela calculadora e pelas abas de mercado.
     previsoes["dupla_1x"] = previsoes["prob_H"] + previsoes["prob_D"]
     previsoes["dupla_12"] = previsoes["prob_H"] + previsoes["prob_A"]
     previsoes["dupla_x2"] = previsoes["prob_D"] + previsoes["prob_A"]
@@ -1020,86 +1283,81 @@ def main():
     livro = Workbook()
     livro.remove(livro.active)
 
-    aba_leiame(livro, previsoes, contexto, confiabilidade)
+    aba_inicio(livro, previsoes, contexto, confiabilidade)
     aba_palpites(livro, previsoes)
     aba_rodadas(livro, previsoes)
 
-    aba_mercado(livro, previsoes, "Resultado 1X2", [
-        ("Casa", "prob_H"), ("Empate", "prob_D"), ("Fora", "prob_A"),
-        ("1X", "dupla_1x"), ("12", "dupla_12"), ("X2", "dupla_x2"),
-        ("Placar provável", "placar_mais_provavel"),
-        ("Chance do placar", "prob_placar_mais_provavel"),
-    ], formatos={"placar_mais_provavel": "texto"})
+    aba_mercado(livro, previsoes, "Resultado 1X2", COR_RESULTADO,
+                "Cada desfecho com a sua probabilidade e a odd justa correspondente. "
+                "Dupla chance cobre dois dos três resultados.",
+                [("Casa", "prob_H"), ("Empate", "prob_D"), ("Fora", "prob_A"),
+                 ("1X", "dupla_1x"), ("12", "dupla_12"), ("X2", "dupla_x2")])
 
-    aba_mercado(livro, previsoes, "Gols", [
-        ("Gols esp. mandante", "gols_esperados_mandante"),
-        ("Gols esp. visitante", "gols_esperados_visitante"),
-        ("Gols esp. total", "gols_esperados_total"),
-        ("+0,5", "mais_de_0_5"), ("+1,5", "mais_de_1_5"), ("+2,5", "mais_de_2_5"),
-        ("+3,5", "mais_de_3_5"), ("+4,5", "mais_de_4_5"),
-        ("-2,5", "menos_de_2_5"),
-    ], formatos={"gols_esperados_mandante": "num", "gols_esperados_visitante": "num",
-                 "gols_esperados_total": "num"})
+    aba_mercado(livro, previsoes, "Gols", COR_GOLS,
+                "Linhas de mais/menos gols. 'Menos de 2,5' é o complemento de "
+                "'mais de 2,5'.",
+                [("+0,5", "mais_de_0_5"), ("+1,5", "mais_de_1_5"),
+                 ("+2,5", "mais_de_2_5"), ("+3,5", "mais_de_3_5"),
+                 ("+4,5", "mais_de_4_5"), ("-2,5", "menos_de_2_5")],
+                numericos=[("Gols mandante", "gols_esperados_mandante"),
+                           ("Gols visitante", "gols_esperados_visitante"),
+                           ("Gols total", "gols_esperados_total")])
 
-    aba_mercado(livro, previsoes, "Multi-Gols",
+    aba_mercado(livro, previsoes, "Multi-Gols", COR_GOLS,
+                "Chance de o total de gols da partida cair dentro de cada faixa.",
                 [(f"{a}-{b}", f"multigols_{a}_{b}") for a, b in ub.FAIXAS_MULTIGOLS])
 
-    aba_mercado(livro, previsoes, "Ambas Marcam", [
-        ("Ambas SIM", "prob_ambas_marcam"), ("Ambas NÃO", "ambas_nao"),
-        ("Mandante marca", "prob_mandante_marca"),
-        ("Visitante marca", "prob_visitante_marca"),
-    ], aviso="ATENÇÃO: este mercado é SUBESTIMADO pelo modelo em cerca de 4 pontos "
-             "percentuais (viés medido fora da amostra). Ver aba Confiabilidade.")
+    aba_mercado(livro, previsoes, "Ambas Marcam", COR_AMBAS,
+                "Ambas as equipes marcam, e a chance de cada lado marcar pelo menos "
+                "um gol.",
+                [("Sim", "prob_ambas_marcam"), ("Não", "ambas_nao"),
+                 ("Mandante marca", "prob_mandante_marca"),
+                 ("Visitante marca", "prob_visitante_marca")],
+                aviso="ATENÇÃO: o modelo supõe que os gols dos dois times são "
+                      "independentes e por isso SUBESTIMA este mercado em cerca de 4 "
+                      "pontos percentuais. Some o viés antes de usar — ver aba "
+                      "Confiabilidade.")
 
-    aba_mercado(livro, previsoes, "Escanteios",
-                [("Esc. mandante", "escanteios_mandante"),
-                 ("Esc. visitante", "escanteios_visitante"),
-                 ("Esc. total", "escanteios_total")]
-                + [(f"+{v:.1f}".replace(".", ","),
-                    f"escanteios_mais_{str(v).replace('.', '_')}")
-                   for v in ub.LINHAS_ESCANTEIOS],
-                aviso="CONFIANÇA MÉDIA: escanteios vêm de base própria que cobre 2015 a 2026, "
-                      "já com a temporada corrente e todos os 20 clubes. O viés fora da "
-                      "amostra é pequeno, mas oscila cerca de ±5 p.p. entre temporadas.",
-                formatos={"escanteios_mandante": "num", "escanteios_visitante": "num",
-                          "escanteios_total": "num"})
+    aba_mercado(livro, previsoes, "Escanteios", COR_ESCANTEIOS,
+                "Total de escanteios da partida (soma dos dois times) e as linhas de "
+                "mais/menos.",
+                [(f"+{v:.1f}".replace(".", ","),
+                  f"escanteios_mais_{str(v).replace('.', '_')}")
+                 for v in ub.LINHAS_ESCANTEIOS],
+                numericos=[("Esc. mandante", "escanteios_mandante"),
+                           ("Esc. visitante", "escanteios_visitante"),
+                           ("Esc. total", "escanteios_total")],
+                aviso="Confiança média: base de estatísticas cobre 2015 a 2026, com os "
+                      "20 clubes. O viés fora da amostra é pequeno, mas oscila cerca de "
+                      "±5 p.p. entre temporadas.")
 
-    aba_mercado(livro, previsoes, "Cartões",
-                [("Cart. mandante", "cartoes_mandante"),
-                 ("Cart. visitante", "cartoes_visitante"),
-                 ("Cart. total", "cartoes_total")]
-                + [(f"+{v:.1f}".replace(".", ","),
-                    f"cartoes_mais_{str(v).replace('.', '_')}")
-                   for v in ub.LINHAS_CARTOES],
-                aviso="CONFIANÇA MÉDIA: cartões vêm de base própria que cobre 2015 a 2026. "
-                      "Incluir 2024-2026 derrubou o viés de 'mais de 4,5 cartões' de "
-                      "-4,3 para -1,8 ponto percentual na validação fora da amostra.",
-                formatos={"cartoes_mandante": "num", "cartoes_visitante": "num",
-                          "cartoes_total": "num"})
+    aba_mercado(livro, previsoes, "Cartões", COR_CARTOES,
+                "Total de cartões da partida (amarelos mais vermelhos, somando os dois "
+                "times) e as linhas de mais/menos.",
+                [(f"+{v:.1f}".replace(".", ","),
+                  f"cartoes_mais_{str(v).replace('.', '_')}")
+                 for v in ub.LINHAS_CARTOES],
+                numericos=[("Cart. mandante", "cartoes_mandante"),
+                           ("Cart. visitante", "cartoes_visitante"),
+                           ("Cart. total", "cartoes_total")],
+                aviso="Confiança média: incluir as temporadas de 2024 a 2026 derrubou o "
+                      "viés de 'mais de 4,5 cartões' de -4,3 para -1,8 ponto percentual "
+                      "na validação fora da amostra.")
 
-    aba_base_calculadora(livro, previsoes)
+    aba_dados(livro, previsoes)
     aba_calculadora(livro, previsoes)
     aba_confiabilidade(livro, confiabilidade)
     aba_times(livro, contexto)
 
-    # Impressão: paisagem, ajustada à largura, com o cabeçalho repetindo em
-    # todas as páginas nas abas que são tabelas longas.
-    abas_tabela = {"Palpites", "Resultado 1X2", "Gols", "Multi-Gols",
-                   "Ambas Marcam", "Escanteios", "Cartões", "Confiabilidade",
-                   "Times"}
+    # Impressão: paisagem ajustada à largura, cabeçalho repetido nas tabelas.
     for planilha in livro.worksheets:
         planilha.page_setup.orientation = "landscape"
         planilha.page_setup.fitToWidth = 1
         planilha.page_setup.fitToHeight = 0
         planilha.sheet_properties.pageSetUpPr.fitToPage = True
         planilha.print_options.horizontalCentered = True
-        if planilha.title in abas_tabela:
-            linha_cabecalho = 3 if planilha.title in ("Ambas Marcam", "Escanteios",
-                                                      "Cartões") else 1
-            if planilha.title in ("Confiabilidade", "Times"):
-                linha_cabecalho = 4
-            planilha.print_title_rows = f"{linha_cabecalho}:{linha_cabecalho}"
 
+    livro.active = 0
     ARQUIVO_SAIDA.parent.mkdir(parents=True, exist_ok=True)
     livro.save(ARQUIVO_SAIDA)
     print(f"\nPlanilha salva em {ARQUIVO_SAIDA.relative_to(ub.RAIZ)}")
