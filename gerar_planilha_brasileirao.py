@@ -79,6 +79,18 @@ def montar_previsoes():
                            | set(modelo_cartoes.sem_historico(times_2026)))
     print(f"  Times sem histórico de escanteios/cartões: {sem_historico or 'nenhum'}")
 
+    print("Carregando o calendário oficial (rodada e data)...")
+    calendario = ub.carregar_calendario(ub.TEMPORADA_ALVO)
+    futuras = calendario[~calendario["jogada"]]
+    restantes = restantes.merge(futuras[["rodada", "data", "Home", "Away"]],
+                                on=["Home", "Away"], how="left")
+    faltando_rodada = int(restantes["rodada"].isna().sum())
+    if faltando_rodada:
+        print(f"  AVISO: {faltando_rodada} partidas sem rodada no calendário")
+    restantes = restantes.sort_values(["rodada", "data", "Home"]).reset_index(drop=True)
+    print(f"  {restantes['rodada'].nunique()} rodadas restantes: "
+          f"{sorted(restantes['rodada'].dropna().unique().tolist())}")
+
     print("Calculando previsões das partidas restantes...")
     linhas = []
     for numero, (mandante, visitante) in enumerate(
@@ -86,7 +98,13 @@ def montar_previsoes():
         lambda_casa, lambda_fora = modelo_gols.lambdas(mandante, visitante)
         matriz = ub.matriz_placares(lambda_casa, lambda_fora, modelo_gols.rho,
                                     modelo_gols.max_gols)
-        linha = {"n": numero, "Mandante": mandante, "Visitante": visitante,
+        registro_calendario = restantes.iloc[numero - 1]
+        rodada = registro_calendario["rodada"]
+        data = registro_calendario["data"]
+        linha = {"n": numero,
+                 "Rodada": int(rodada) if pd.notna(rodada) else None,
+                 "Data": data.date() if pd.notna(data) else None,
+                 "Mandante": mandante, "Visitante": visitante,
                  **ub.previsoes_do_placar(matriz),
                  **ub.previsoes_multigols(matriz)}
 
@@ -108,6 +126,11 @@ def montar_previsoes():
 
         linha["sem_historico_stats"] = (
             "sim" if (mandante in sem_historico or visitante in sem_historico) else "não")
+        # Partida sem resultado cuja data já passou é jogo adiado: a data do
+        # calendário não vale mais, só a rodada.
+        linha["situacao"] = ("adiado" if (pd.notna(data)
+                                          and data < disputadas["data"].max())
+                             else "programado")
         linhas.append(linha)
 
     previsoes = pd.DataFrame(linhas)
@@ -135,6 +158,7 @@ def montar_previsoes():
         "modelo_escanteios": modelo_escanteios, "modelo_cartoes": modelo_cartoes,
         "estatisticas": estatisticas, "sem_historico": sem_historico,
         "data_corte": disputadas["data"].max(),
+        "calendario": calendario,
         "classificacao": ub.classificacao(base, ub.TEMPORADA_ALVO),
     }
     return previsoes, contexto
@@ -236,8 +260,9 @@ def medir_confiabilidade(contexto) -> pd.DataFrame:
         desvio = np.std([100 * (p - o) for p, o in pares], ddof=1)
         nome = "escanteios" if rotulo == "escanteios" else "cartões"
         registrar(f"Mais de {valor:.1f} {nome}".replace(".", ","),
-                  previstos, observados, n_testadas, "Baixa",
-                  f"base só vai até 2023; oscilação de ±{desvio:.1f} p.p. entre temporadas")
+                  previstos, observados, n_testadas, "Média",
+                  f"base vai até {ub.ANO_FIM_ESTATISTICAS}; oscilação de "
+                  f"±{desvio:.1f} p.p. entre temporadas")
 
     return pd.DataFrame(linhas)
 
@@ -327,12 +352,13 @@ def aba_leiame(livro, previsoes, contexto, confiabilidade):
     linha += 1
     abas = [
         ("Palpites", "Todas as partidas com os principais mercados, uma linha por jogo. Comece por aqui."),
+        ("Rodadas", "As mesmas previsões organizadas pelo calendário oficial: resumo de cada rodada e os jogos em ordem."),
         ("Resultado 1X2", "Vitória, empate, derrota, dupla chance e a cotação mínima de cada um."),
         ("Gols", "Mais/menos de 0,5 a 4,5 gols, gols esperados e placar mais provável."),
         ("Multi-Gols", "Probabilidade de o total de gols cair em cada faixa (0-1, 1-2, 1-3...)."),
         ("Ambas Marcam", "Ambas marcam sim/não e a chance de cada equipe marcar."),
-        ("Escanteios", "Escanteios esperados e linhas de mais/menos. CONFIANÇA BAIXA."),
-        ("Cartões", "Cartões esperados e linhas de mais/menos. CONFIANÇA BAIXA."),
+        ("Escanteios", "Escanteios esperados e linhas de mais/menos. CONFIANÇA MÉDIA."),
+        ("Cartões", "Cartões esperados e linhas de mais/menos. CONFIANÇA MÉDIA."),
         ("Calculadora", "Escolha a partida e o mercado, digite a cotação e veja se vale a pena."),
         ("Confiabilidade", "Quanto cada mercado errou em testes fora da amostra."),
         ("Times", "Força de ataque e defesa de cada clube, em gols, escanteios e cartões."),
@@ -357,13 +383,16 @@ def aba_leiame(livro, previsoes, contexto, confiabilidade):
         ("Resultado, gols, multi-gols", "ALTA",
          "Modelo de Poisson com correção de Dixon-Coles, ajustado com TODAS as partidas "
          "até a rodada mais recente de 2026. Testado em 4.076 partidas fora da amostra."),
+        ("Escanteios e cartões", "MÉDIA",
+         "Base própria de estatísticas, agora cobrindo 2015 a 2026 — inclui a temporada "
+         "corrente e todos os 20 clubes, Mirassol e Remo inclusive. Fora da amostra o "
+         "viés médio ficou em torno de 1 a 2 pontos percentuais, mas oscila cerca de "
+         "±5 p.p. de uma temporada para outra: use como boa estimativa, não como número "
+         "fino."),
         ("Ambas as equipes marcam", "MÉDIA",
-         "Mesmo modelo, mas ele supõe que os gols dos dois times são independentes e por "
-         "isso SUBESTIMA este mercado em cerca de 4 pontos percentuais (valor medido)."),
-        ("Escanteios e cartões", "BAIXA",
-         "Vêm de outra base pública, que só tem estatística preenchida de 2015 a 2023 — "
-         "não há 2024, 2025 nem 2026. Mirassol e Remo não têm nenhum histórico nela e "
-         "caem na média da liga. Trate como ordem de grandeza, não como número fino."),
+         "Mesmo modelo dos gols, mas ele supõe que os gols dos dois times são "
+         "independentes e por isso SUBESTIMA este mercado em cerca de 4 pontos "
+         "percentuais (valor medido). Some o viés antes de usar."),
     ]
     for mercado, nivel, explicacao in niveis:
         planilha.cell(row=linha, column=2, value=mercado).font = FONTE_NEGRITO
@@ -417,7 +446,10 @@ def aba_leiame(livro, previsoes, contexto, confiabilidade):
     linha += 1
     planilha.cell(row=linha, column=2,
                   value="Fonte dos gols e cotações: Football-Data.co.uk (via espelho público). "
-                        "Fonte de escanteios e cartões: adaoduque/Brasileirao_Dataset (2015-2023).")
+                        "Fonte de escanteios, cartões e calendário: datalake "
+                        "leeofernandes1980/brasileirao-dataset (2015-2026). Os 277 resultados "
+                        "já disputados de 2026 batem exatamente entre as duas bases, e as 103 "
+                        "partidas restantes coincidem com as deduzidas do formato do campeonato.")
     planilha.cell(row=linha, column=2).font = FONTE_SUBTITULO
     planilha.merge_cells(start_row=linha, start_column=2, end_row=linha, end_column=6)
     return planilha
@@ -427,7 +459,7 @@ def aba_palpites(livro, previsoes):
     """Aba principal: uma linha por partida com os mercados mais usados."""
     planilha = livro.create_sheet("Palpites")
     cabecalhos = [
-        "Nº", "Mandante", "Visitante", "Palpite 1X2", "Placar provável",
+        "Rodada", "Data", "Mandante", "Visitante", "Palpite 1X2", "Placar provável",
         "Casa", "Empate", "Fora", "1X", "12", "X2",
         "Gols esperados", "+1,5", "+2,5", "+3,5",
         "Ambas marcam", "Multi 1-3", "Multi 2-4",
@@ -436,39 +468,41 @@ def aba_palpites(livro, previsoes):
     ]
     escrever_cabecalho(planilha, cabecalhos)
 
-    for indice, registro in enumerate(previsoes.itertuples(index=False), start=2):
-        planilha.cell(row=indice, column=1, value=registro.n)
-        planilha.cell(row=indice, column=2, value=registro.Mandante)
-        planilha.cell(row=indice, column=3, value=registro.Visitante)
-        planilha.cell(row=indice, column=4, value=registro.palpite_1x2)
-        planilha.cell(row=indice, column=5, value=registro.placar_mais_provavel)
-        planilha.cell(row=indice, column=6, value=registro.prob_H)
-        planilha.cell(row=indice, column=7, value=registro.prob_D)
-        planilha.cell(row=indice, column=8, value=registro.prob_A)
+    ordenado = previsoes.sort_values(["Rodada", "Data", "Mandante"])
+    for indice, registro in enumerate(ordenado.itertuples(index=False), start=2):
+        planilha.cell(row=indice, column=1, value=registro.Rodada)
+        planilha.cell(row=indice, column=2, value=registro.Data)
+        planilha.cell(row=indice, column=3, value=registro.Mandante)
+        planilha.cell(row=indice, column=4, value=registro.Visitante)
+        planilha.cell(row=indice, column=5, value=registro.palpite_1x2)
+        planilha.cell(row=indice, column=6, value=registro.placar_mais_provavel)
+        planilha.cell(row=indice, column=7, value=registro.prob_H)
+        planilha.cell(row=indice, column=8, value=registro.prob_D)
+        planilha.cell(row=indice, column=9, value=registro.prob_A)
         # Dupla chance como fórmula: recalcula se a probabilidade mudar.
-        planilha.cell(row=indice, column=9, value=f"=F{indice}+G{indice}")
-        planilha.cell(row=indice, column=10, value=f"=F{indice}+H{indice}")
-        planilha.cell(row=indice, column=11, value=f"=G{indice}+H{indice}")
-        planilha.cell(row=indice, column=12, value=registro.gols_esperados_total)
-        planilha.cell(row=indice, column=13, value=registro.mais_de_1_5)
-        planilha.cell(row=indice, column=14, value=registro.mais_de_2_5)
-        planilha.cell(row=indice, column=15, value=registro.mais_de_3_5)
-        planilha.cell(row=indice, column=16, value=registro.prob_ambas_marcam)
-        planilha.cell(row=indice, column=17, value=registro.multigols_1_3)
-        planilha.cell(row=indice, column=18, value=registro.multigols_2_4)
-        planilha.cell(row=indice, column=19, value=registro.escanteios_total)
-        planilha.cell(row=indice, column=20, value=getattr(registro, "escanteios_mais_8_5"))
-        planilha.cell(row=indice, column=21, value=getattr(registro, "escanteios_mais_9_5"))
-        planilha.cell(row=indice, column=22, value=registro.cartoes_total)
-        planilha.cell(row=indice, column=23, value=getattr(registro, "cartoes_mais_3_5"))
-        planilha.cell(row=indice, column=24, value=getattr(registro, "cartoes_mais_4_5"))
-        planilha.cell(row=indice, column=25, value=registro.palpite_seguro)
-        planilha.cell(row=indice, column=26, value=registro.palpite_seguro_prob)
+        planilha.cell(row=indice, column=10, value=f"=G{indice}+H{indice}")
+        planilha.cell(row=indice, column=11, value=f"=G{indice}+I{indice}")
+        planilha.cell(row=indice, column=12, value=f"=H{indice}+I{indice}")
+        planilha.cell(row=indice, column=13, value=registro.gols_esperados_total)
+        planilha.cell(row=indice, column=14, value=registro.mais_de_1_5)
+        planilha.cell(row=indice, column=15, value=registro.mais_de_2_5)
+        planilha.cell(row=indice, column=16, value=registro.mais_de_3_5)
+        planilha.cell(row=indice, column=17, value=registro.prob_ambas_marcam)
+        planilha.cell(row=indice, column=18, value=registro.multigols_1_3)
+        planilha.cell(row=indice, column=19, value=registro.multigols_2_4)
+        planilha.cell(row=indice, column=20, value=registro.escanteios_total)
+        planilha.cell(row=indice, column=21, value=getattr(registro, "escanteios_mais_8_5"))
+        planilha.cell(row=indice, column=22, value=getattr(registro, "escanteios_mais_9_5"))
+        planilha.cell(row=indice, column=23, value=registro.cartoes_total)
+        planilha.cell(row=indice, column=24, value=getattr(registro, "cartoes_mais_3_5"))
+        planilha.cell(row=indice, column=25, value=getattr(registro, "cartoes_mais_4_5"))
+        planilha.cell(row=indice, column=26, value=registro.palpite_seguro)
+        planilha.cell(row=indice, column=27, value=registro.palpite_seguro_prob)
 
     ultima = len(previsoes) + 1
     faixa_percentual(planilha, 2, ultima,
-                     [6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 20, 21, 23, 24, 26])
-    for coluna in (12, 19, 22):
+                     [7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 24, 25, 27])
+    for coluna in (13, 20, 23):
         for linha in range(2, ultima + 1):
             planilha.cell(row=linha, column=coluna).number_format = DECIMAL
 
@@ -477,23 +511,19 @@ def aba_palpites(livro, previsoes):
             celula = planilha.cell(row=linha, column=coluna)
             celula.font = FONTE_NORMAL
             celula.border = BORDA_FINA
-        planilha.cell(row=linha, column=4).font = FONTE_NEGRITO
-        planilha.cell(row=linha, column=25).font = FONTE_NEGRITO
+        planilha.cell(row=linha, column=2).number_format = "DD/MM/YYYY"
+        planilha.cell(row=linha, column=5).font = FONTE_NEGRITO
+        planilha.cell(row=linha, column=26).font = FONTE_NEGRITO
 
-    ajustar_larguras(planilha, [5, 17, 17, 12, 13, 8, 8, 8, 8, 8, 8, 13, 8, 8, 8,
+    ajustar_larguras(planilha, [8, 12, 17, 17, 12, 13, 8, 8, 8, 8, 8, 8, 13, 8, 8, 8,
                                 13, 10, 10, 11, 9, 9, 10, 9, 9, 24, 9])
-    planilha.freeze_panes = "D2"
+    planilha.freeze_panes = "E2"
     planilha.auto_filter.ref = f"A1:{get_column_letter(len(cabecalhos))}{ultima}"
 
-    # Destaca em laranja as colunas de confiança baixa (escanteios e cartões).
-    for coluna in range(19, 25):
-        celula = planilha.cell(row=1, column=coluna)
-        celula.fill = PatternFill("solid", fgColor=LARANJA)
-
     nota = planilha.cell(row=ultima + 2, column=1)
-    nota.value = ("Colunas em laranja (escanteios e cartões) têm CONFIANÇA BAIXA: "
-                  "vêm de base que só cobre 2015-2023. Ver aba Leia-me.")
-    nota.font = FONTE_AVISO
+    nota.value = ("Ordenado pelo calendário oficial. Use o filtro da coluna Rodada "
+                  "para ver uma rodada por vez, ou a aba Rodadas para o resumo.")
+    nota.font = FONTE_SUBTITULO
     return planilha
 
 
@@ -825,6 +855,151 @@ def aba_times(livro, contexto):
     return planilha
 
 
+def aba_rodadas(livro, previsoes):
+    """
+    Previsões organizadas pelo calendário oficial: um resumo por rodada e, em
+    seguida, os jogos de cada rodada em ordem.
+    """
+    planilha = livro.create_sheet("Rodadas")
+    planilha.sheet_view.showGridLines = False
+
+    com_rodada = previsoes.dropna(subset=["Rodada"]).copy()
+    com_rodada["Rodada"] = com_rodada["Rodada"].astype(int)
+
+    planilha["A1"] = "PREVISÕES RODADA A RODADA"
+    planilha["A1"].font = FONTE_TITULO
+    planilha["A2"] = (f"{len(com_rodada)} partidas em "
+                      f"{com_rodada['Rodada'].nunique()} rodadas, na ordem do "
+                      "calendário oficial. Jogos marcados como ADIADO estão na "
+                      "rodada original e a data já passou: vale a rodada, não a data.")
+    planilha["A2"].font = FONTE_SUBTITULO
+    planilha.merge_cells("A2:J2")
+
+    # --- Resumo por rodada -------------------------------------------------
+    resumo = (com_rodada.groupby("Rodada")
+              .agg(jogos=("n", "size"),
+                   primeira_data=("Data", "min"), ultima_data=("Data", "max"),
+                   gols_esperados=("gols_esperados_total", "mean"),
+                   vitorias_mandante=("prob_H", "mean"),
+                   empates=("prob_D", "mean"),
+                   over_25=("mais_de_2_5", "mean"),
+                   ambas=("prob_ambas_marcam", "mean"),
+                   escanteios=("escanteios_total", "mean"),
+                   cartoes=("cartoes_total", "mean"))
+              .reset_index())
+
+    linha = 4
+    planilha.cell(row=linha, column=1, value="RESUMO POR RODADA").font = Font(
+        name=FONTE, size=12, bold=True)
+    linha += 1
+    cabecalhos_resumo = ["Rodada", "Jogos", "De", "Até", "Gols esp. médios",
+                         "Mandante vence", "Empate", "+2,5 gols", "Ambas marcam",
+                         "Escanteios", "Cartões"]
+    escrever_cabecalho(planilha, cabecalhos_resumo, linha=linha)
+    primeira_resumo = linha + 1
+    for deslocamento, registro in enumerate(resumo.itertuples(index=False)):
+        atual = primeira_resumo + deslocamento
+        planilha.cell(row=atual, column=1, value=registro.Rodada)
+        planilha.cell(row=atual, column=2, value=registro.jogos)
+        planilha.cell(row=atual, column=3, value=registro.primeira_data)
+        planilha.cell(row=atual, column=4, value=registro.ultima_data)
+        planilha.cell(row=atual, column=5, value=registro.gols_esperados)
+        planilha.cell(row=atual, column=6, value=registro.vitorias_mandante)
+        planilha.cell(row=atual, column=7, value=registro.empates)
+        planilha.cell(row=atual, column=8, value=registro.over_25)
+        planilha.cell(row=atual, column=9, value=registro.ambas)
+        planilha.cell(row=atual, column=10, value=registro.escanteios)
+        planilha.cell(row=atual, column=11, value=registro.cartoes)
+        for coluna in range(1, 12):
+            planilha.cell(row=atual, column=coluna).font = FONTE_NORMAL
+            planilha.cell(row=atual, column=coluna).border = BORDA_FINA
+        for coluna in (3, 4):
+            planilha.cell(row=atual, column=coluna).number_format = "DD/MM/YYYY"
+        for coluna in (5, 10, 11):
+            planilha.cell(row=atual, column=coluna).number_format = DECIMAL
+    ultima_resumo = primeira_resumo + len(resumo) - 1
+    faixa_percentual(planilha, primeira_resumo, ultima_resumo, [6, 7, 8, 9])
+
+    # Total geral, como fórmula sobre o próprio resumo.
+    total = ultima_resumo + 1
+    planilha.cell(row=total, column=1, value="TODAS").font = FONTE_NEGRITO
+    planilha.cell(row=total, column=2,
+                  value=f"=SUM(B{primeira_resumo}:B{ultima_resumo})").font = FONTE_NEGRITO
+    for coluna in (5, 6, 7, 8, 9, 10, 11):
+        letra = get_column_letter(coluna)
+        celula = planilha.cell(
+            row=total, column=coluna,
+            value=f"=AVERAGE({letra}{primeira_resumo}:{letra}{ultima_resumo})")
+        celula.font = FONTE_NEGRITO
+        celula.number_format = DECIMAL if coluna in (5, 10, 11) else PERCENTUAL
+        celula.fill = FUNDO_SECAO
+    for coluna in (1, 2, 3, 4):
+        planilha.cell(row=total, column=coluna).fill = FUNDO_SECAO
+
+    # --- Jogo a jogo, agrupado por rodada ----------------------------------
+    linha = total + 3
+    planilha.cell(row=linha, column=1, value="JOGO A JOGO").font = Font(
+        name=FONTE, size=12, bold=True)
+    linha += 1
+    cabecalhos = ["Rodada", "Data", "Situação", "Mandante", "Visitante",
+                  "Palpite 1X2", "Placar", "Casa", "Empate", "Fora", "Gols esp.",
+                  "+2,5", "Ambas", "Escanteios", "Cartões",
+                  "Palpite mais seguro", "Chance"]
+    escrever_cabecalho(planilha, cabecalhos, linha=linha)
+    primeira_detalhe = linha + 1
+
+    atual = primeira_detalhe
+    for rodada in sorted(com_rodada["Rodada"].unique()):
+        jogos = com_rodada[com_rodada["Rodada"] == rodada]
+        for registro in jogos.itertuples(index=False):
+            planilha.cell(row=atual, column=1, value=registro.Rodada)
+            planilha.cell(row=atual, column=2, value=registro.Data)
+            planilha.cell(row=atual, column=3, value=registro.situacao)
+            planilha.cell(row=atual, column=4, value=registro.Mandante)
+            planilha.cell(row=atual, column=5, value=registro.Visitante)
+            planilha.cell(row=atual, column=6, value=registro.palpite_1x2)
+            planilha.cell(row=atual, column=7, value=registro.placar_mais_provavel)
+            planilha.cell(row=atual, column=8, value=registro.prob_H)
+            planilha.cell(row=atual, column=9, value=registro.prob_D)
+            planilha.cell(row=atual, column=10, value=registro.prob_A)
+            planilha.cell(row=atual, column=11, value=registro.gols_esperados_total)
+            planilha.cell(row=atual, column=12, value=registro.mais_de_2_5)
+            planilha.cell(row=atual, column=13, value=registro.prob_ambas_marcam)
+            planilha.cell(row=atual, column=14, value=registro.escanteios_total)
+            planilha.cell(row=atual, column=15, value=registro.cartoes_total)
+            planilha.cell(row=atual, column=16, value=registro.palpite_seguro)
+            planilha.cell(row=atual, column=17, value=registro.palpite_seguro_prob)
+            for coluna in range(1, 18):
+                planilha.cell(row=atual, column=coluna).font = FONTE_NORMAL
+                planilha.cell(row=atual, column=coluna).border = BORDA_FINA
+            planilha.cell(row=atual, column=2).number_format = "DD/MM/YYYY"
+            planilha.cell(row=atual, column=6).font = FONTE_NEGRITO
+            for coluna in (11, 14, 15):
+                planilha.cell(row=atual, column=coluna).number_format = DECIMAL
+            # Faixa alternada por rodada, para separar os blocos visualmente.
+            if rodada % 2 == 0:
+                for coluna in range(1, 18):
+                    planilha.cell(row=atual, column=coluna).fill = PatternFill(
+                        "solid", fgColor="F7FAFE")
+            atual += 1
+    ultima_detalhe = atual - 1
+    faixa_percentual(planilha, primeira_detalhe, ultima_detalhe,
+                     [8, 9, 10, 12, 13, 17])
+    # Destaca os jogos adiados: a data deles não vale mais, só a rodada.
+    planilha.conditional_formatting.add(
+        f"C{primeira_detalhe}:C{ultima_detalhe}",
+        CellIsRule(operator="equal", formula=['"adiado"'],
+                   fill=PatternFill("solid", fgColor="FFF3CD"),
+                   font=Font(name=FONTE, size=10, bold=True, color="9C6500")))
+
+    ajustar_larguras(planilha, [8, 12, 11, 17, 17, 12, 9, 8, 8, 8, 10, 8, 8, 11, 9,
+                                24, 9])
+    planilha.freeze_panes = planilha.cell(row=primeira_detalhe, column=4).coordinate
+    planilha.auto_filter.ref = (f"A{primeira_detalhe - 1}:"
+                                f"{get_column_letter(len(cabecalhos))}{ultima_detalhe}")
+    return planilha
+
+
 # ---------------------------------------------------------------------------
 # 4. Programa principal
 # ---------------------------------------------------------------------------
@@ -847,6 +1022,7 @@ def main():
 
     aba_leiame(livro, previsoes, contexto, confiabilidade)
     aba_palpites(livro, previsoes)
+    aba_rodadas(livro, previsoes)
 
     aba_mercado(livro, previsoes, "Resultado 1X2", [
         ("Casa", "prob_H"), ("Empate", "prob_D"), ("Fora", "prob_A"),
@@ -882,8 +1058,9 @@ def main():
                 + [(f"+{v:.1f}".replace(".", ","),
                     f"escanteios_mais_{str(v).replace('.', '_')}")
                    for v in ub.LINHAS_ESCANTEIOS],
-                aviso="CONFIANÇA BAIXA: escanteios vêm de base que só cobre 2015-2023. "
-                      "Mirassol e Remo não têm histórico e usam a média da liga.",
+                aviso="CONFIANÇA MÉDIA: escanteios vêm de base própria que cobre 2015 a 2026, "
+                      "já com a temporada corrente e todos os 20 clubes. O viés fora da "
+                      "amostra é pequeno, mas oscila cerca de ±5 p.p. entre temporadas.",
                 formatos={"escanteios_mandante": "num", "escanteios_visitante": "num",
                           "escanteios_total": "num"})
 
@@ -894,9 +1071,9 @@ def main():
                 + [(f"+{v:.1f}".replace(".", ","),
                     f"cartoes_mais_{str(v).replace('.', '_')}")
                    for v in ub.LINHAS_CARTOES],
-                aviso="CONFIANÇA BAIXA: cartões vêm de base que só cobre 2015-2023 e o "
-                      "modelo SUBESTIMA as linhas em cerca de 4 pontos percentuais. "
-                      "Mirassol e Remo usam a média da liga.",
+                aviso="CONFIANÇA MÉDIA: cartões vêm de base própria que cobre 2015 a 2026. "
+                      "Incluir 2024-2026 derrubou o viés de 'mais de 4,5 cartões' de "
+                      "-4,3 para -1,8 ponto percentual na validação fora da amostra.",
                 formatos={"cartoes_mandante": "num", "cartoes_visitante": "num",
                           "cartoes_total": "num"})
 

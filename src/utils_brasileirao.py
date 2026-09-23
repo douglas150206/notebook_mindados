@@ -829,25 +829,29 @@ def previsoes_multigols(matriz: np.ndarray) -> dict:
 # Por isso tudo o que sai daqui é rotulado com confiança BAIXA, em oposição aos
 # mercados derivados de gols, que usam dados até a rodada mais recente.
 
-URL_ESTATISTICAS = ("https://raw.githubusercontent.com/adaoduque/"
-                    "Brasileirao_Dataset/master/campeonato-brasileiro-estatisticas-full.csv")
-URL_PARTIDAS_ESTATISTICAS = ("https://raw.githubusercontent.com/adaoduque/"
-                             "Brasileirao_Dataset/master/campeonato-brasileiro-full.csv")
+# Fonte: camada "silver" do datalake público leeofernandes1980/brasileirao-dataset,
+# que consolida o histórico de adaoduque (2003-2023) com importação da API do
+# Sofascore para 2024 em diante. É o que permite usar a TEMPORADA CORRENTE:
+# os arquivos CSV da raiz daquele repositório param em 2023, mas os parquet da
+# silver chegam a 2026, e trazem também a rodada e a data de cada partida.
+#
+# A base foi conferida contra a fonte de gols e cotações: os 277 resultados já
+# disputados de 2026 batem exatamente, e as 103 partidas que faltam coincidem
+# com as deduzidas pelo formato de turno e returno.
+URL_DATALAKE = ("https://raw.githubusercontent.com/leeofernandes1980/"
+                "brasileirao-dataset/master/datalake/silver/{arquivo}.parquet")
 
-ARQUIVO_ESTATISTICAS = DIR_BRUTO / "estatisticas_2015_2023.csv"
-ARQUIVO_PARTIDAS_ESTATISTICAS = DIR_BRUTO / "partidas_estatisticas.csv"
+ARQUIVO_DL_PARTIDAS = DIR_BRUTO / "datalake_partidas.parquet"
+ARQUIVO_DL_ESTATISTICAS = DIR_BRUTO / "datalake_estatisticas.parquet"
 
 ANO_INICIO_ESTATISTICAS = 2015   # antes disso as colunas vêm zeradas
-ANO_FIM_ESTATISTICAS = 2023      # 2024 vem zerado; 2025 e 2026 não existem
+ANO_FIM_ESTATISTICAS = 2026      # temporada corrente
 
 # Nomes divergem entre as duas bases; a base de gols (Football-Data) manda.
 MAPA_NOMES_ESTATISTICAS = {
     "Flamengo": "Flamengo RJ",
     "Botafogo-RJ": "Botafogo RJ",
     "Chapecoense": "Chapecoense-SC",
-    "Athletico-PR": "Athletico-PR",
-    "Atletico-MG": "Atletico-MG",
-    "Sao Paulo": "Sao Paulo",
 }
 
 LINHAS_ESCANTEIOS = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
@@ -855,65 +859,108 @@ LINHAS_CARTOES = [2.5, 3.5, 4.5, 5.5, 6.5]
 
 
 def baixar_estatisticas() -> dict:
-    """Baixa (com cache) a base pública de estatísticas de jogo."""
+    """Baixa (com cache) os parquet da camada silver do datalake."""
     import requests
 
     resultado = {}
-    for rotulo, url, destino in (
-            ("estatisticas", URL_ESTATISTICAS, ARQUIVO_ESTATISTICAS),
-            ("partidas", URL_PARTIDAS_ESTATISTICAS, ARQUIVO_PARTIDAS_ESTATISTICAS)):
+    for chave, destino in (("partidas", ARQUIVO_DL_PARTIDAS),
+                           ("estatisticas", ARQUIVO_DL_ESTATISTICAS)):
         if destino.exists() and destino.stat().st_size > 10_000:
-            resultado[rotulo] = "cache"
+            resultado[chave] = "cache"
             continue
-        resposta = requests.get(url, timeout=120)
+        resposta = requests.get(URL_DATALAKE.format(arquivo=chave), timeout=180)
         resposta.raise_for_status()
         destino.write_bytes(resposta.content)
-        resultado[rotulo] = "baixado"
+        resultado[chave] = "baixado"
     return resultado
+
+
+def _partidas_datalake() -> pd.DataFrame:
+    partidas = pd.read_parquet(ARQUIVO_DL_PARTIDAS)
+    partidas = partidas.rename(columns={"mandante": "Home", "visitante": "Away",
+                                        "temporada": "ano"})
+    for coluna in ("Home", "Away"):
+        partidas[coluna] = (partidas[coluna].astype(str).str.strip()
+                            .replace(MAPA_NOMES_ESTATISTICAS))
+    partidas["data"] = pd.to_datetime(partidas["data"], errors="coerce")
+    partidas["jogada"] = partidas["gols_mandante"].notna()
+    return partidas
 
 
 def carregar_estatisticas() -> pd.DataFrame:
     """
-    Devolve uma linha por partida com escanteios e cartões dos dois lados,
-    já com os nomes de clube padronizados pelos da base de gols.
+    Uma linha por partida com escanteios e cartões dos dois lados, de 2015 até
+    a temporada corrente.
+
+    Regras de qualidade aplicadas:
+
+    * só entram partidas com o dado dos DOIS times (meia partida distorceria
+      tanto o efeito do time quanto o total);
+    * ``cartao_vermelho`` nulo com amarelo preenchido é lido como zero — na
+      importação recente o campo só é gravado quando houve expulsão;
+    * cada mercado usa o seu próprio subconjunto válido, porque escanteios e
+      cartões faltam em partidas diferentes.
     """
-    estatisticas = pd.read_csv(ARQUIVO_ESTATISTICAS)
-    partidas = pd.read_csv(ARQUIVO_PARTIDAS_ESTATISTICAS)
-
-    partidas["data"] = pd.to_datetime(partidas["data"], format="%d/%m/%Y",
-                                      errors="coerce")
-    partidas["ano"] = partidas["data"].dt.year
-
-    juntado = estatisticas.merge(
-        partidas[["ID", "ano", "data", "mandante", "visitante"]],
-        left_on="partida_id", right_on="ID", how="inner")
-    juntado = juntado[juntado["ano"].between(ANO_INICIO_ESTATISTICAS,
-                                             ANO_FIM_ESTATISTICAS)].copy()
-
+    estatisticas = pd.read_parquet(ARQUIVO_DL_ESTATISTICAS)
+    estatisticas = estatisticas.rename(columns={"temporada": "ano"})
+    estatisticas["clube"] = (estatisticas["clube"].astype(str).str.strip()
+                             .replace(MAPA_NOMES_ESTATISTICAS))
     for coluna in ("escanteios", "cartao_amarelo", "cartao_vermelho"):
-        juntado[coluna] = pd.to_numeric(juntado[coluna], errors="coerce")
-    juntado["cartoes"] = juntado["cartao_amarelo"] + juntado["cartao_vermelho"]
+        estatisticas[coluna] = pd.to_numeric(estatisticas[coluna], errors="coerce")
+    estatisticas["cartoes"] = (estatisticas["cartao_amarelo"]
+                               + estatisticas["cartao_vermelho"].fillna(0))
+    estatisticas.loc[estatisticas["cartao_amarelo"].isna(), "cartoes"] = np.nan
 
-    for coluna in ("clube", "mandante", "visitante"):
-        juntado[coluna] = (juntado[coluna].astype(str).str.strip()
-                           .replace(MAPA_NOMES_ESTATISTICAS))
+    partidas = _partidas_datalake()
+    juntado = estatisticas.merge(
+        partidas[["partida_id", "ano", "data", "rodada", "Home", "Away", "jogada"]],
+        on="partida_id", how="inner", suffixes=("", "_partida"))
+    juntado = juntado[juntado["jogada"]
+                      & juntado["ano"].between(ANO_INICIO_ESTATISTICAS,
+                                               ANO_FIM_ESTATISTICAS)]
 
-    juntado["eh_mandante"] = juntado["clube"] == juntado["mandante"]
-    lado_casa = juntado[juntado["eh_mandante"]]
-    lado_fora = juntado[~juntado["eh_mandante"]]
+    # A coluna "clube" tem DUAS convenções na base, indicadas pela coluna
+    # "fonte": as linhas do histórico em CSV (até 2023) trazem o nome do clube,
+    # e as importadas do Sofascore (2024 em diante) trazem literalmente
+    # "mandante" ou "visitante". Ignorar isso descartaria silenciosamente todas
+    # as temporadas recentes - justamente as que mais importam.
+    posicional = juntado["clube"].isin(["mandante", "visitante"])
+    juntado = juntado.assign(lado=np.where(
+        posicional, juntado["clube"],
+        np.where(juntado["clube"] == juntado["Home"], "mandante", "visitante")))
 
-    jogos = lado_casa.merge(
-        lado_fora[["partida_id", "escanteios", "cartoes"]],
-        on="partida_id", suffixes=("_mandante", "_visitante"))
-    jogos = jogos.rename(columns={"mandante": "Home", "visitante": "Away"})
-    jogos = jogos[["partida_id", "ano", "data", "Home", "Away",
+    casa = juntado[juntado["lado"] == "mandante"]
+    fora = juntado[juntado["lado"] == "visitante"]
+    jogos = casa.merge(fora[["partida_id", "escanteios", "cartoes"]],
+                       on="partida_id", suffixes=("_mandante", "_visitante"))
+    jogos = jogos[["partida_id", "ano", "data", "rodada", "Home", "Away",
                    "escanteios_mandante", "escanteios_visitante",
                    "cartoes_mandante", "cartoes_visitante"]]
+    return jogos.sort_values(["data", "partida_id"]).reset_index(drop=True)
 
-    # Descarta partidas em que a estatística não foi preenchida.
-    validas = ((jogos[["escanteios_mandante", "escanteios_visitante"]].sum(axis=1) > 0)
-               & jogos[["cartoes_mandante", "cartoes_visitante"]].notna().all(axis=1))
-    return jogos[validas].reset_index(drop=True)
+
+def validas_para(estatisticas: pd.DataFrame, mercado: str) -> pd.DataFrame:
+    """Subconjunto com o dado dos dois times para o mercado pedido."""
+    colunas = ([f"escanteios_{lado}" for lado in ("mandante", "visitante")]
+               if mercado == "escanteios"
+               else [f"cartoes_{lado}" for lado in ("mandante", "visitante")])
+    return estatisticas.dropna(subset=colunas).reset_index(drop=True)
+
+
+def carregar_calendario(temporada: int = TEMPORADA_ALVO) -> pd.DataFrame:
+    """
+    Calendário oficial da temporada: rodada, data, mandante e visitante.
+
+    É daqui que sai a aba de rodadas. As partidas ainda não disputadas trazem a
+    rodada e a data previstas; jogos adiados aparecem na rodada original, que
+    pode ser anterior à rodada corrente.
+    """
+    partidas = _partidas_datalake()
+    do_ano = partidas[partidas["ano"] == temporada].copy()
+    do_ano["rodada"] = pd.to_numeric(do_ano["rodada"], errors="coerce").astype("Int64")
+    return do_ano[["partida_id", "rodada", "data", "Home", "Away", "jogada",
+                   "gols_mandante", "gols_visitante"]].sort_values(
+        ["rodada", "data", "Home"]).reset_index(drop=True)
 
 
 class ModeloContagem:
@@ -1071,14 +1118,16 @@ def ajustar_modelos_estatisticas(estatisticas: pd.DataFrame,
     Ajusta os modelos de escanteios e cartões na configuração validada:
     ponderação temporal de 365 dias e âncora na temporada mais recente.
     """
-    ultimo_ano = int(estatisticas["ano"].max())
-    recentes = estatisticas[estatisticas["ano"] > ultimo_ano - temporadas_ancora]
-
     modelos = {}
     for nome, coluna_mandante, coluna_visitante in (
             ("escanteios", "escanteios_mandante", "escanteios_visitante"),
             ("cartoes", "cartoes_mandante", "cartoes_visitante")):
-        modelo = ajustar_modelo_contagem(estatisticas, nome, coluna_mandante,
+        # Cada mercado usa o seu próprio subconjunto: escanteios e cartões
+        # faltam em partidas diferentes.
+        dados = validas_para(estatisticas, nome)
+        ultimo_ano = int(dados["ano"].max())
+        recentes = dados[dados["ano"] > ultimo_ano - temporadas_ancora]
+        modelo = ajustar_modelo_contagem(dados, nome, coluna_mandante,
                                          coluna_visitante, meia_vida_dias)
         modelo = ancorar_modelo_contagem(modelo, recentes, coluna_mandante,
                                          coluna_visitante)

@@ -21,14 +21,14 @@ Multi-gols 3-4,0.32449829604647956,0.34543670264965654,-2.0938406603176976,4076,
 Multi-gols 3-5,0.3832672105816484,0.3989205103042198,-1.56532997225714,4076,Alta,
 Multi-gols 3-6,0.4073398088881714,0.42271835132482827,-1.5378542436656872,4076,Alta,
 Ambas as equipes marcam,0.4457981786812163,0.48748773307163884,-4.1689554390422545,4076,Média,modelo supõe gols independentes e subestima este mercado
-"Mais de 7,5 escanteios",0.7845928041011063,0.8030748069373861,-1.8482002836279765,1876,Baixa,base só vai até 2023; oscilação de ±4.2 p.p. entre temporadas
-"Mais de 8,5 escanteios",0.6857820522973531,0.700190365165408,-1.4408312868054884,1876,Baixa,base só vai até 2023; oscilação de ±5.7 p.p. entre temporadas
-"Mais de 9,5 escanteios",0.5768018918007074,0.5772790361763548,-0.0477144375647387,1876,Baixa,base só vai até 2023; oscilação de ±4.8 p.p. entre temporadas
-"Mais de 10,5 escanteios",0.46629383235667915,0.4643981522164188,0.18956801402603696,1876,Baixa,base só vai até 2023; oscilação de ±6.5 p.p. entre temporadas
-"Mais de 11,5 escanteios",0.3622744188136365,0.35726546631114403,0.5008952502492448,1876,Baixa,base só vai até 2023; oscilação de ±5.0 p.p. entre temporadas
-"Mais de 12,5 escanteios",0.2706673010941656,0.26801048451574017,0.2656816578425425,1876,Baixa,base só vai até 2023; oscilação de ±5.0 p.p. entre temporadas
-"Mais de 2,5 cartões",0.8392750645366401,0.8480838584297864,-0.8808793893146261,1876,Baixa,base só vai até 2023; oscilação de ±4.3 p.p. entre temporadas
-"Mais de 3,5 cartões",0.6862892977110421,0.6997765862918706,-1.3487288580828483,1876,Baixa,base só vai até 2023; oscilação de ±6.0 p.p. entre temporadas
-"Mais de 4,5 cartões",0.511023557239822,0.5422898467777297,-3.1266289537907777,1876,Baixa,base só vai até 2023; oscilação de ±8.2 p.p. entre temporadas
-"Mais de 5,5 cartões",0.34657365619681674,0.37402604168118614,-2.74523854843694,1876,Baixa,base só vai até 2023; oscilação de ±8.7 p.p. entre temporadas
-"Mais de 6,5 cartões",0.2150217097871951,0.23000914502334374,-1.498743523614865,1876,Baixa,base só vai até 2023; oscilação de ±6.8 p.p. entre temporadas
+"Mais de 7,5 escanteios",0.7633230962662124,0.7549068972069162,0.8416199059296248,2937,Média,base vai até 2026; oscilação de ±9.9 p.p. entre temporadas
+"Mais de 8,5 escanteios",0.6635314350245578,0.6570195230856926,0.6511911938865245,2937,Média,base vai até 2026; oscilação de ±9.1 p.p. entre temporadas
+"Mais de 9,5 escanteios",0.5559447693420052,0.5364430932927988,1.9501676049206385,2937,Média,base vai até 2026; oscilação de ±6.9 p.p. entre temporadas
+"Mais de 10,5 escanteios",0.4486997389158327,0.421184448033441,2.7515290882391685,2937,Média,base vai até 2026; oscilação de ±7.9 p.p. entre temporadas
+"Mais de 11,5 escanteios",0.34895301300856624,0.315693283298499,3.325972971006724,2937,Média,base vai até 2026; oscilação de ±6.1 p.p. entre temporadas
+"Mais de 12,5 escanteios",0.26174107379086997,0.2360203306099183,2.572074318095166,2937,Média,base vai até 2026; oscilação de ±4.9 p.p. entre temporadas
+"Mais de 2,5 cartões",0.8497879008824272,0.8145140604218126,3.5273840460614547,2937,Média,base vai até 2026; oscilação de ±11.8 p.p. entre temporadas
+"Mais de 3,5 cartões",0.7077757416747114,0.6843138419152575,2.3461899759453897,2937,Média,base vai até 2026; oscilação de ±10.5 p.p. entre temporadas
+"Mais de 4,5 cartões",0.5424162762437197,0.5342627778833364,0.815349836038326,2937,Média,base vai até 2026; oscilação de ±10.2 p.p. entre temporadas
+"Mais de 5,5 cartões",0.38262078354549156,0.3845323484704541,-0.19115649249625277,2937,Média,base vai até 2026; oscilação de ±8.4 p.p. entre temporadas
+"Mais de 6,5 cartões",0.24941533827974627,0.23852128063841915,1.0894057641327115,2937,Média,base vai até 2026; oscilação de ±7.7 p.p. entre temporadas
