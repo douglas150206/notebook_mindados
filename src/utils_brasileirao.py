@@ -782,3 +782,305 @@ def simular_temporada(modelo: ModeloGols, restantes: pd.DataFrame,
         "prob_g6": (posicoes <= 6).mean(axis=0),
         "prob_z4": (posicoes >= n_times - 3).mean(axis=0),
     }).sort_values("posicao_media").reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Multi-gols (faixas de total de gols)
+# ---------------------------------------------------------------------------
+
+# Faixas usuais do mercado brasileiro de "multi-gols".
+FAIXAS_MULTIGOLS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (1, 4),
+                    (2, 3), (2, 4), (2, 5), (3, 4), (3, 5), (3, 6)]
+
+# Linhas de gols para mais/menos.
+LINHAS_GOLS = [0.5, 1.5, 2.5, 3.5, 4.5]
+
+
+def previsoes_multigols(matriz: np.ndarray) -> dict:
+    """Probabilidade de o total de gols cair em cada faixa e acima de cada linha."""
+    n = matriz.shape[0]
+    grade_casa, grade_fora = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    total = grade_casa + grade_fora
+
+    saida = {}
+    for minimo, maximo in FAIXAS_MULTIGOLS:
+        saida[f"multigols_{minimo}_{maximo}"] = float(
+            matriz[(total >= minimo) & (total <= maximo)].sum())
+    for linha in LINHAS_GOLS:
+        saida[f"mais_de_{linha}".replace(".", "_")] = float(matriz[total > linha].sum())
+    return saida
+
+
+# ---------------------------------------------------------------------------
+# Estatísticas de jogo: escanteios e cartões
+# ---------------------------------------------------------------------------
+#
+# ATENÇÃO — estas duas famílias de mercado vêm de uma base DIFERENTE e mais
+# fraca que a dos gols:
+#
+#   * a fonte das cotações (Football-Data) não traz escanteios nem cartões;
+#   * a base pública que traz (adaoduque/Brasileirao_Dataset) só tem estatística
+#     preenchida de 2015 a 2023 — em 2024 as colunas estão zeradas e não há
+#     2025 nem 2026;
+#   * portanto as previsões de escanteios e cartões se apoiam em dados com
+#     alguns anos de defasagem, e dois clubes de 2026 (Mirassol e Remo) não têm
+#     nenhum histórico nessa base, caindo na média da liga.
+#
+# Por isso tudo o que sai daqui é rotulado com confiança BAIXA, em oposição aos
+# mercados derivados de gols, que usam dados até a rodada mais recente.
+
+URL_ESTATISTICAS = ("https://raw.githubusercontent.com/adaoduque/"
+                    "Brasileirao_Dataset/master/campeonato-brasileiro-estatisticas-full.csv")
+URL_PARTIDAS_ESTATISTICAS = ("https://raw.githubusercontent.com/adaoduque/"
+                             "Brasileirao_Dataset/master/campeonato-brasileiro-full.csv")
+
+ARQUIVO_ESTATISTICAS = DIR_BRUTO / "estatisticas_2015_2023.csv"
+ARQUIVO_PARTIDAS_ESTATISTICAS = DIR_BRUTO / "partidas_estatisticas.csv"
+
+ANO_INICIO_ESTATISTICAS = 2015   # antes disso as colunas vêm zeradas
+ANO_FIM_ESTATISTICAS = 2023      # 2024 vem zerado; 2025 e 2026 não existem
+
+# Nomes divergem entre as duas bases; a base de gols (Football-Data) manda.
+MAPA_NOMES_ESTATISTICAS = {
+    "Flamengo": "Flamengo RJ",
+    "Botafogo-RJ": "Botafogo RJ",
+    "Chapecoense": "Chapecoense-SC",
+    "Athletico-PR": "Athletico-PR",
+    "Atletico-MG": "Atletico-MG",
+    "Sao Paulo": "Sao Paulo",
+}
+
+LINHAS_ESCANTEIOS = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
+LINHAS_CARTOES = [2.5, 3.5, 4.5, 5.5, 6.5]
+
+
+def baixar_estatisticas() -> dict:
+    """Baixa (com cache) a base pública de estatísticas de jogo."""
+    import requests
+
+    resultado = {}
+    for rotulo, url, destino in (
+            ("estatisticas", URL_ESTATISTICAS, ARQUIVO_ESTATISTICAS),
+            ("partidas", URL_PARTIDAS_ESTATISTICAS, ARQUIVO_PARTIDAS_ESTATISTICAS)):
+        if destino.exists() and destino.stat().st_size > 10_000:
+            resultado[rotulo] = "cache"
+            continue
+        resposta = requests.get(url, timeout=120)
+        resposta.raise_for_status()
+        destino.write_bytes(resposta.content)
+        resultado[rotulo] = "baixado"
+    return resultado
+
+
+def carregar_estatisticas() -> pd.DataFrame:
+    """
+    Devolve uma linha por partida com escanteios e cartões dos dois lados,
+    já com os nomes de clube padronizados pelos da base de gols.
+    """
+    estatisticas = pd.read_csv(ARQUIVO_ESTATISTICAS)
+    partidas = pd.read_csv(ARQUIVO_PARTIDAS_ESTATISTICAS)
+
+    partidas["data"] = pd.to_datetime(partidas["data"], format="%d/%m/%Y",
+                                      errors="coerce")
+    partidas["ano"] = partidas["data"].dt.year
+
+    juntado = estatisticas.merge(
+        partidas[["ID", "ano", "data", "mandante", "visitante"]],
+        left_on="partida_id", right_on="ID", how="inner")
+    juntado = juntado[juntado["ano"].between(ANO_INICIO_ESTATISTICAS,
+                                             ANO_FIM_ESTATISTICAS)].copy()
+
+    for coluna in ("escanteios", "cartao_amarelo", "cartao_vermelho"):
+        juntado[coluna] = pd.to_numeric(juntado[coluna], errors="coerce")
+    juntado["cartoes"] = juntado["cartao_amarelo"] + juntado["cartao_vermelho"]
+
+    for coluna in ("clube", "mandante", "visitante"):
+        juntado[coluna] = (juntado[coluna].astype(str).str.strip()
+                           .replace(MAPA_NOMES_ESTATISTICAS))
+
+    juntado["eh_mandante"] = juntado["clube"] == juntado["mandante"]
+    lado_casa = juntado[juntado["eh_mandante"]]
+    lado_fora = juntado[~juntado["eh_mandante"]]
+
+    jogos = lado_casa.merge(
+        lado_fora[["partida_id", "escanteios", "cartoes"]],
+        on="partida_id", suffixes=("_mandante", "_visitante"))
+    jogos = jogos.rename(columns={"mandante": "Home", "visitante": "Away"})
+    jogos = jogos[["partida_id", "ano", "data", "Home", "Away",
+                   "escanteios_mandante", "escanteios_visitante",
+                   "cartoes_mandante", "cartoes_visitante"]]
+
+    # Descarta partidas em que a estatística não foi preenchida.
+    validas = ((jogos[["escanteios_mandante", "escanteios_visitante"]].sum(axis=1) > 0)
+               & jogos[["cartoes_mandante", "cartoes_visitante"]].notna().all(axis=1))
+    return jogos[validas].reset_index(drop=True)
+
+
+class ModeloContagem:
+    """
+    Modelo de contagem por partida (escanteios ou cartões).
+
+        log(lambda) = intercepto + efeito_feito[time] + efeito_sofrido[adversário]
+                      + mando
+
+    O total da partida é a soma dos dois lados. Como a contagem observada é
+    **sobredispersa** em relação a Poisson (a variância supera a média), as
+    probabilidades de mais/menos usam uma **binomial negativa** com a dispersão
+    estimada dos resíduos — Poisson puro subestimaria as caudas, que é
+    justamente onde ficam as linhas de aposta.
+    """
+
+    def __init__(self, nome, intercepto, feito, sofrido, mando, dispersao,
+                 media_liga, n_partidas, anos):
+        self.nome = nome
+        self.intercepto = float(intercepto)
+        self.feito = dict(feito)
+        self.sofrido = dict(sofrido)
+        self.mando = float(mando)
+        self.dispersao = float(dispersao)     # parâmetro k da binomial negativa
+        self.media_liga = float(media_liga)
+        self.n_partidas = int(n_partidas)
+        self.anos = anos
+
+    def sem_historico(self, times) -> list[str]:
+        return sorted({t for t in times if t not in self.feito})
+
+    def lambdas(self, mandante: str, visitante: str) -> tuple[float, float]:
+        """Contagem esperada de cada lado; time sem histórico fica na média."""
+        lambda_casa = np.exp(self.intercepto
+                             + self.feito.get(mandante, 0.0)
+                             + self.sofrido.get(visitante, 0.0)
+                             + self.mando)
+        lambda_fora = np.exp(self.intercepto
+                             + self.feito.get(visitante, 0.0)
+                             + self.sofrido.get(mandante, 0.0))
+        return float(lambda_casa), float(lambda_fora)
+
+    def prob_acima(self, mandante: str, visitante: str, linha: float) -> float:
+        """P(total da partida > linha), pela binomial negativa."""
+        from scipy.stats import nbinom
+
+        media = sum(self.lambdas(mandante, visitante))
+        k = self.dispersao
+        p = k / (k + media)
+        # P(X > linha) = 1 - P(X <= floor(linha))
+        return float(1.0 - nbinom.cdf(np.floor(linha), k, p))
+
+    def total_esperado(self, mandante: str, visitante: str) -> float:
+        return sum(self.lambdas(mandante, visitante))
+
+
+def ajustar_modelo_contagem(dados: pd.DataFrame, nome: str,
+                            coluna_mandante: str, coluna_visitante: str,
+                            meia_vida_dias: float | None = None
+                            ) -> ModeloContagem:
+    """
+    Ajusta o modelo de contagem e estima a dispersão dos resíduos.
+
+    ``meia_vida_dias`` pondera as partidas no tempo. Isso importa muito para
+    cartões: o número médio por jogo subiu ao longo dos anos (arbitragem mais
+    rigorosa), e um ajuste sem peso fica preso à média antiga e subestima as
+    linhas de mais/menos.
+    """
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
+
+    longo = pd.concat([
+        pd.DataFrame({"valor": dados[coluna_mandante], "feito": dados["Home"],
+                      "sofrido": dados["Away"], "mando": 1.0,
+                      "data": dados["data"]}),
+        pd.DataFrame({"valor": dados[coluna_visitante], "feito": dados["Away"],
+                      "sofrido": dados["Home"], "mando": 0.0,
+                      "data": dados["data"]}),
+    ], ignore_index=True).dropna(subset=["valor"])
+
+    if meia_vida_dias:
+        pesos = _pesos_temporais(pd.to_datetime(longo["data"]),
+                                 pd.to_datetime(dados["data"]).max(),
+                                 meia_vida_dias)
+        glm = smf.glm("valor ~ C(feito) + C(sofrido) + mando", data=longo,
+                      family=sm.families.Poisson(), freq_weights=pesos).fit()
+    else:
+        glm = smf.glm("valor ~ C(feito) + C(sofrido) + mando", data=longo,
+                      family=sm.families.Poisson()).fit()
+
+    times = sorted(set(longo["feito"]))
+    feito = {t: 0.0 for t in times}
+    sofrido = {t: 0.0 for t in times}
+    padrao = re.compile(r"C\((feito|sofrido)\)\[T\.(.+)\]")
+    for parametro, valor in glm.params.items():
+        achado = padrao.fullmatch(parametro)
+        if achado:
+            alvo = feito if achado.group(1) == "feito" else sofrido
+            alvo[achado.group(2)] = float(valor)
+
+    # Recentragem: o patsy deixa um time como referência com coeficiente zero,
+    # e os demais saem relativos a ELE. Sem corrigir isso, um time sem
+    # histórico (que cai no valor 0,0) seria tratado como aquele time de
+    # referência específico, e não como um time médio — no Brasileirão isso
+    # inflava os escanteios do adversário do Remo em mais de 10%.
+    # Deslocando a média dos coeficientes para o intercepto, o zero passa a
+    # significar "média da liga" e as previsões dos times conhecidos não mudam.
+    media_feito = float(np.mean(list(feito.values())))
+    media_sofrido = float(np.mean(list(sofrido.values())))
+    feito = {t: v - media_feito for t, v in feito.items()}
+    sofrido = {t: v - media_sofrido for t, v in sofrido.items()}
+    intercepto = float(glm.params["Intercept"]) + media_feito + media_sofrido
+
+    modelo = ModeloContagem(nome, intercepto, feito, sofrido,
+                            glm.params["mando"], np.inf,
+                            float(longo["valor"].mean()), len(dados),
+                            (int(dados["ano"].min()), int(dados["ano"].max())))
+
+    # Dispersão do TOTAL da partida: V = mu + mu^2 / k  =>  k = mu^2 / (V - mu).
+    totais = (dados[coluna_mandante] + dados[coluna_visitante]).to_numpy(dtype=float)
+    esperados = np.array([modelo.total_esperado(m, v)
+                          for m, v in zip(dados["Home"], dados["Away"])])
+    excesso = np.mean((totais - esperados) ** 2 - esperados)
+    modelo.dispersao = (float(np.mean(esperados ** 2) / excesso)
+                        if excesso > 0 else 1e6)   # 1e6 ~ Poisson
+    return modelo
+
+
+def ancorar_modelo_contagem(modelo: ModeloContagem, dados_recentes: pd.DataFrame,
+                            coluna_mandante: str, coluna_visitante: str) -> ModeloContagem:
+    """
+    Desloca o intercepto para que a média prevista bata com a média observada
+    nas temporadas mais recentes.
+
+    Serve para um problema medido: o número de cartões por partida subiu ao
+    longo dos anos e um modelo ajustado na janela inteira fica preso ao nível
+    antigo. Ancorar na última temporada disponível reduziu o viés de
+    "mais de 4,5 cartões" de -4,8 para -2,9 pontos percentuais na validação
+    fora da amostra.
+    """
+    observado = float((dados_recentes[coluna_mandante]
+                       + dados_recentes[coluna_visitante]).mean())
+    previsto = float(np.mean([modelo.total_esperado(m, v)
+                              for m, v in zip(dados_recentes["Home"],
+                                              dados_recentes["Away"])]))
+    if previsto > 0 and observado > 0:
+        modelo.intercepto += float(np.log(observado / previsto))
+    return modelo
+
+
+def ajustar_modelos_estatisticas(estatisticas: pd.DataFrame,
+                                 meia_vida_dias: float = 365.0,
+                                 temporadas_ancora: int = 1) -> dict:
+    """
+    Ajusta os modelos de escanteios e cartões na configuração validada:
+    ponderação temporal de 365 dias e âncora na temporada mais recente.
+    """
+    ultimo_ano = int(estatisticas["ano"].max())
+    recentes = estatisticas[estatisticas["ano"] > ultimo_ano - temporadas_ancora]
+
+    modelos = {}
+    for nome, coluna_mandante, coluna_visitante in (
+            ("escanteios", "escanteios_mandante", "escanteios_visitante"),
+            ("cartoes", "cartoes_mandante", "cartoes_visitante")):
+        modelo = ajustar_modelo_contagem(estatisticas, nome, coluna_mandante,
+                                         coluna_visitante, meia_vida_dias)
+        modelo = ancorar_modelo_contagem(modelo, recentes, coluna_mandante,
+                                         coluna_visitante)
+        modelos[nome] = modelo
+    return modelos
