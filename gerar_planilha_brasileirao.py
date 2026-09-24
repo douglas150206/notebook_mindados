@@ -499,6 +499,8 @@ def aba_inicio(livro, previsoes, contexto, confiabilidade):
     abas = [
         ("Palpites", "Todas as 103 partidas numa tela, com probabilidade e odd justa.", COR_RESULTADO),
         ("Rodadas", "As mesmas previsões no calendário oficial: resumo por rodada e jogo a jogo.", COR_JOGO),
+        ("Melhores Palpites", "Os palpites mais prováveis de cada rodada, um por partida.", COR_DESTAQUE),
+        ("Bilhetes", "Múltiplas pré-montadas, do mais seguro ao de odd mais alta — com o retorno esperado de cada uma.", COR_AMBAS),
         ("Calculadora", "Escolha a partida e o mercado, digite a cotação da casa e veja se compensa.", COR_DESTAQUE),
         ("Resultado 1X2", "Vitória, empate, derrota e dupla chance, com as odds justas.", COR_RESULTADO),
         ("Gols", "Mais/menos de 0,5 a 4,5 gols e o placar mais provável.", COR_GOLS),
@@ -1264,6 +1266,363 @@ def aba_times(livro, contexto):
 
 
 # ---------------------------------------------------------------------------
+# Melhores palpites e bilhetes pré-montados
+# ---------------------------------------------------------------------------
+#
+# Um bilhete múltiplo multiplica as odds das pernas — e multiplica junto a
+# margem da casa. Com a margem medida no Brasileirão (cerca de 7% por mercado),
+# o retorno esperado cai de -6,5% numa aposta simples para -41,7% numa múltipla
+# de oito pernas. Por isso a aba de bilhetes traz essa coluna: o bilhete de odd
+# alta é o que mais devolve dinheiro à casa, e isso precisa estar à vista.
+#
+# Todas as pernas de um bilhete vêm de PARTIDAS DIFERENTES. Duas seleções do
+# mesmo jogo são correlacionadas (quem vence costuma marcar), e multiplicar as
+# probabilidades nesse caso daria um número errado para mais.
+
+# (rótulo exibido, campo na tabela de previsões, confiança da família)
+MERCADOS_PALPITE = [
+    ("Vitória do mandante", "prob_H", "Alta"),
+    ("Empate", "prob_D", "Alta"),
+    ("Vitória do visitante", "prob_A", "Alta"),
+    ("Casa ou empate (1X)", "dupla_1x", "Alta"),
+    ("Casa ou fora (12)", "dupla_12", "Alta"),
+    ("Empate ou fora (X2)", "dupla_x2", "Alta"),
+    ("Mais de 0,5 gol", "mais_de_0_5", "Alta"),
+    ("Mais de 1,5 gols", "mais_de_1_5", "Alta"),
+    ("Mais de 2,5 gols", "mais_de_2_5", "Alta"),
+    ("Mais de 3,5 gols", "mais_de_3_5", "Alta"),
+    ("Menos de 2,5 gols", "menos_de_2_5", "Alta"),
+    ("Ambas marcam - SIM", "prob_ambas_marcam", "Média"),
+    ("Ambas marcam - NÃO", "ambas_nao", "Média"),
+    ("Mais de 8,5 escanteios", "escanteios_mais_8_5", "Média"),
+    ("Mais de 9,5 escanteios", "escanteios_mais_9_5", "Média"),
+    ("Mais de 10,5 escanteios", "escanteios_mais_10_5", "Média"),
+    ("Mais de 3,5 cartões", "cartoes_mais_3_5", "Média"),
+    ("Mais de 4,5 cartões", "cartoes_mais_4_5", "Média"),
+    ("Mais de 5,5 cartões", "cartoes_mais_5_5", "Média"),
+]
+MERCADOS_PALPITE += [(f"Multi-gols {a}-{b}", f"multigols_{a}_{b}", "Alta")
+                     for a, b in ub.FAIXAS_MULTIGOLS]
+
+# Escada de bilhetes: alvo de odd -> nome do perfil.
+ESCADA_BILHETES = [
+    (1.5, "Muito seguro"), (2.0, "Seguro"), (3.0, "Moderado"),
+    (5.0, "Equilibrado"), (10.0, "Ousado"), (25.0, "Arriscado"),
+    (50.0, "Agressivo"), (100.0, "Muito agressivo"), (250.0, "Risco máximo"),
+]
+PROB_MINIMA_PERNA = 0.35   # abaixo disso o modelo é menos confiável
+MAX_PERNAS = 8
+
+
+def candidatos_por_partida(previsoes: pd.DataFrame) -> pd.DataFrame:
+    """Todas as seleções disponíveis, uma linha por partida x mercado."""
+    linhas = []
+    for registro in previsoes.itertuples(index=False):
+        for rotulo, campo, confianca in MERCADOS_PALPITE:
+            probabilidade = getattr(registro, campo, None)
+            if probabilidade is None or not np.isfinite(probabilidade):
+                continue
+            linhas.append({
+                "Rodada": registro.Rodada, "Data": registro.Data,
+                "Partida": f"{registro.Mandante} x {registro.Visitante}",
+                "Mercado": rotulo, "prob": float(probabilidade),
+                "Confiança": confianca})
+    candidatos = pd.DataFrame(linhas)
+    candidatos["odd_justa"] = 1.0 / candidatos["prob"]
+    return candidatos
+
+
+# Faixas de odd para a vitrine de palpites: para cada partida mostramos o
+# palpite mais seguro e um para cada nível de risco.
+ALVOS_VITRINE = [("Mais seguro", None), ("Odd ~1,5", 1.5),
+                 ("Odd ~2,0", 2.0), ("Odd ~3,0", 3.0)]
+
+
+def melhores_por_partida(candidatos: pd.DataFrame) -> pd.DataFrame:
+    """
+    Para cada partida, quatro palpites: o mais provável e um em cada faixa de
+    odd.
+
+    Ordenar por probabilidade pura não serve de vitrine: como a odd justa é
+    exatamente 1/probabilidade, o topo do ranking é sempre o mesmo mercado
+    trivial ("mais de 0,5 gol", perto de 94% e odd 1,06) em todas as partidas.
+    Separar por faixa de odd é o que dá variedade e deixa o leitor escolher o
+    risco que quer correr.
+    """
+    linhas = []
+    for partida, grupo in candidatos.groupby("Partida", sort=False):
+        registro = {"Rodada": grupo["Rodada"].iloc[0],
+                    "Data": grupo["Data"].iloc[0], "Partida": partida}
+        usados = set()
+        for rotulo, alvo in ALVOS_VITRINE:
+            disponiveis = grupo[~grupo["Mercado"].isin(usados)]
+            if disponiveis.empty:
+                continue
+            if alvo is None:
+                escolhido = disponiveis.loc[disponiveis["prob"].idxmax()]
+            else:
+                distancia = (disponiveis["odd_justa"] - alvo).abs()
+                escolhido = disponiveis.loc[distancia.idxmin()]
+            usados.add(escolhido["Mercado"])
+            registro[f"{rotulo}|mercado"] = escolhido["Mercado"]
+            registro[f"{rotulo}|prob"] = float(escolhido["prob"])
+            registro[f"{rotulo}|conf"] = escolhido["Confiança"]
+        linhas.append(registro)
+    tabela = pd.DataFrame(linhas)
+    return tabela.sort_values(["Rodada", "Data", "Partida"]).reset_index(drop=True)
+
+
+def _escolher_pernas(grupo: pd.DataFrame, n_pernas: int,
+                     prob_alvo: float) -> pd.DataFrame:
+    """n seleções de partidas diferentes, com probabilidade perto do alvo."""
+    ordenado = grupo.assign(
+        distancia=(grupo["prob"] - prob_alvo).abs()).sort_values(
+        ["distancia", "prob"], ascending=[True, False])
+    escolhidas, usadas = [], set()
+    for registro in ordenado.itertuples(index=False):
+        if registro.Partida in usadas:
+            continue
+        escolhidas.append(registro)
+        usadas.add(registro.Partida)
+        if len(escolhidas) == n_pernas:
+            break
+    return pd.DataFrame(escolhidas)
+
+
+def montar_bilhetes(candidatos: pd.DataFrame, margem: float) -> pd.DataFrame:
+    """
+    Monta a escada de bilhetes de cada rodada.
+
+    Para um alvo de odd T, a probabilidade combinada é sempre 1/T — isso não
+    depende de como o bilhete é montado. O que depende é o NÚMERO DE PERNAS:
+    cada perna adiciona a margem da casa. Por isso escolhemos sempre o menor
+    número de pernas que atinge o alvo sem que nenhuma perna fique abaixo de
+    35% de probabilidade.
+    """
+    linhas = []
+    for rodada, grupo in candidatos.groupby("Rodada"):
+        n_partidas = grupo["Partida"].nunique()
+        for alvo, perfil in ESCADA_BILHETES:
+            n_pernas = None
+            for n in range(2, min(MAX_PERNAS, n_partidas) + 1):
+                if (1.0 / alvo) ** (1.0 / n) >= PROB_MINIMA_PERNA:
+                    n_pernas = n
+                    break
+            if n_pernas is None:
+                continue   # a rodada não tem partidas suficientes para esse alvo
+            prob_alvo = (1.0 / alvo) ** (1.0 / n_pernas)
+            pernas = _escolher_pernas(grupo, n_pernas, prob_alvo)
+            if len(pernas) < n_pernas:
+                continue
+
+            prob_combinada = float(pernas["prob"].prod())
+            odd_justa = 1.0 / prob_combinada
+            # A casa paga a odd justa reduzida pela margem, uma vez por perna.
+            odd_casa = odd_justa / ((1.0 + margem) ** n_pernas)
+            retorno = prob_combinada * odd_casa - 1.0
+
+            for posicao, perna in enumerate(pernas.itertuples(index=False), start=1):
+                linhas.append({
+                    "Rodada": int(rodada), "Bilhete": perfil,
+                    "Alvo de odd": alvo, "Pernas": n_pernas,
+                    "Prob. combinada": prob_combinada,
+                    "Odd justa do bilhete": odd_justa,
+                    "Odd provável na casa": odd_casa,
+                    "Retorno esperado": retorno,
+                    "Perna": posicao, "Data": perna.Data,
+                    "Partida": perna.Partida, "Mercado": perna.Mercado,
+                    "Prob. da perna": perna.prob,
+                    "Odd justa da perna": perna.odd_justa,
+                    "Confiança": perna.Confiança})
+    return pd.DataFrame(linhas)
+
+
+def aba_melhores(livro, melhores):
+    planilha = preparar_aba(livro, "Melhores Palpites", COR_DESTAQUE)
+    bloco_titulo(planilha, "MELHORES PALPITES DE CADA RODADA",
+                 "Quatro sugestões por partida: a mais provável e uma em cada faixa de "
+                 "odd. Como a odd justa é 1/probabilidade, o palpite mais seguro é "
+                 "sempre o que menos paga — por isso a vitrine é separada por risco.", 15)
+
+    cores_faixa = [COR_GOLS, COR_RESULTADO, COR_DUPLA, COR_AMBAS]
+    linha = 4
+    grupos = [("PARTIDA", 1, 3, COR_JOGO)]
+    for indice, (rotulo, _) in enumerate(ALVOS_VITRINE):
+        grupos.append((rotulo.upper(), 4 + 3 * indice, 3, cores_faixa[indice]))
+    cabecalho_grupos(planilha, linha, grupos)
+    rotulos = ["Rodada", "Data", "Partida"]
+    for _ in ALVOS_VITRINE:
+        rotulos += ["Mercado", "Prob.", "Odd justa"]
+    cabecalho_colunas(planilha, linha + 1, rotulos)
+
+    primeira = linha + 2
+    for deslocamento, registro in enumerate(melhores.to_dict("records")):
+        atual = primeira + deslocamento
+        planilha.cell(row=atual, column=1, value=registro["Rodada"])
+        planilha.cell(row=atual, column=2, value=registro["Data"])
+        planilha.cell(row=atual, column=3, value=registro["Partida"])
+        for indice, (rotulo, _) in enumerate(ALVOS_VITRINE):
+            coluna = 4 + 3 * indice
+            planilha.cell(row=atual, column=coluna,
+                          value=registro.get(f"{rotulo}|mercado"))
+            planilha.cell(row=atual, column=coluna + 1,
+                          value=registro.get(f"{rotulo}|prob"))
+            letra = get_column_letter(coluna + 1)
+            planilha.cell(row=atual, column=coluna + 2,
+                          value=f'=IFERROR(1/{letra}{atual},"")')
+    ultima = primeira + len(melhores) - 1
+
+    bandas(planilha, primeira, ultima, len(rotulos))
+    colunas_prob = [5 + 3 * i for i in range(len(ALVOS_VITRINE))]
+    escala_probabilidade(planilha, primeira, ultima, colunas_prob)
+    coluna_odd(planilha, primeira, ultima, [c + 1 for c in colunas_prob])
+    for atual in range(primeira, ultima + 1):
+        planilha.cell(row=atual, column=1).font = F_FORTE
+        planilha.cell(row=atual, column=1).alignment = CENTRO
+        planilha.cell(row=atual, column=2).number_format = DATA_BR
+        planilha.cell(row=atual, column=2).font = F_CORPO
+        planilha.cell(row=atual, column=2).alignment = CENTRO
+        planilha.cell(row=atual, column=3).font = F_CORPO
+        planilha.cell(row=atual, column=3).alignment = ESQUERDA
+        for indice in range(len(ALVOS_VITRINE)):
+            celula = planilha.cell(row=atual, column=4 + 3 * indice)
+            celula.font = F_FORTE
+            celula.alignment = ESQUERDA
+
+    larguras(planilha, [8, 11, 32] + [23, 8, 10] * len(ALVOS_VITRINE))
+    planilha.freeze_panes = planilha.cell(row=primeira, column=4).coordinate
+    planilha.auto_filter.ref = (f"A{linha + 1}:"
+                                f"{get_column_letter(len(rotulos))}{ultima}")
+    nota_rodape(planilha, ultima + 2,
+                "Cada coluna traz um mercado diferente: o mesmo palpite não se repete "
+                "entre as faixas da mesma partida. 'Mais seguro' costuma cair em "
+                "mercados de odd baixa, que pagam pouco justamente por serem prováveis.",
+                len(rotulos))
+    return planilha
+
+
+def aba_bilhetes(livro, bilhetes, margem):
+    planilha = preparar_aba(livro, "Bilhetes", COR_AMBAS)
+    bloco_titulo(planilha, "BILHETES PRÉ-MONTADOS",
+                 "Uma escada por rodada, do bilhete mais seguro ao de odd mais alta. "
+                 "Todas as pernas vêm de partidas diferentes. Filtre pela rodada ou "
+                 "pelo perfil do bilhete.", 15)
+
+    # --- painel: o que a múltipla faz com o retorno --------------------------
+    linha = 4
+    planilha.cell(row=linha, column=1,
+                  value="O QUE ACONTECE QUANDO SE EMPILHA PERNA").font = F_SECAO
+    linha += 1
+    planilha.cell(row=linha, column=1,
+                  value=f"A margem medida no Brasileirão é de "
+                        f"{100 * margem:.1f}% por mercado. Numa múltipla ela incide uma "
+                        "vez por perna, então o retorno esperado piora a cada perna "
+                        "adicionada — independentemente de quais jogos entrem.").font = F_SUBTITULO
+    planilha.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=15)
+    linha += 1
+    cabecalho_grupos(planilha, linha, [("PERNAS", 1, 1, COR_JOGO),
+                                       ("RETORNO ESPERADO", 2, 1, COR_AMBAS)])
+    primeira_painel = linha + 1
+    for deslocamento in range(8):
+        n = deslocamento + 1
+        atual = primeira_painel + deslocamento
+        planilha.cell(row=atual, column=1, value=n).font = F_CORPO
+        planilha.cell(row=atual, column=1).alignment = CENTRO
+        celula = planilha.cell(row=atual, column=2,
+                               value=1 / ((1 + margem) ** n) - 1)
+        celula.number_format = "0.0%"
+        celula.font = Font(name=FONTE, size=10, bold=True, color=VERMELHO)
+        celula.alignment = CENTRO
+    ultima_painel = primeira_painel + 7
+    bandas(planilha, primeira_painel, ultima_painel, 2)
+
+    # --- tabela de bilhetes --------------------------------------------------
+    linha = ultima_painel + 2
+    planilha.cell(row=linha, column=1, value="OS BILHETES").font = F_SECAO
+    linha += 1
+    cabecalho_grupos(planilha, linha, [
+        ("BILHETE", 1, 3, COR_AMBAS), ("O BILHETE INTEIRO", 4, 5, COR_RESULTADO),
+        ("PERNA A PERNA", 9, 6, COR_JOGO)])
+    cabecalho_colunas(planilha, linha + 1, [
+        "Rodada", "Perfil", "Alvo", "Pernas", "Prob. combinada",
+        "Odd justa", "Odd provável na casa", "Retorno esperado",
+        "Perna", "Data", "Partida", "Mercado", "Prob.", "Odd justa", "Confiança"])
+    primeira = linha + 2
+
+    # Acesso por NOME da coluna: vários rótulos têm espaço e ponto, e os
+    # atributos posicionais do itertuples (registro._3) quebrariam em silêncio
+    # se a ordem das colunas mudasse.
+    COLUNAS_BILHETE = ["Rodada", "Bilhete", "Alvo de odd", "Pernas",
+                       "Prob. combinada", "Odd justa do bilhete",
+                       "Odd provável na casa", "Retorno esperado", "Perna",
+                       "Data", "Partida", "Mercado", "Prob. da perna",
+                       "Odd justa da perna", "Confiança"]
+    ordenado = bilhetes.sort_values(["Rodada", "Alvo de odd", "Perna"])
+    registros = ordenado.to_dict("records")
+    for deslocamento, registro in enumerate(registros):
+        atual = primeira + deslocamento
+        for coluna, nome in enumerate(COLUNAS_BILHETE, start=1):
+            planilha.cell(row=atual, column=coluna, value=registro[nome])
+    ultima = primeira + len(registros) - 1
+
+    # Faixa por bilhete (e não por linha): mantém o bloco de pernas junto.
+    chave_anterior, alternar = None, False
+    for deslocamento, registro in enumerate(registros):
+        atual = primeira + deslocamento
+        chave = (registro["Rodada"], registro["Alvo de odd"])
+        if chave != chave_anterior:
+            alternar = not alternar
+            chave_anterior = chave
+        planilha.row_dimensions[atual].height = 19
+        if alternar:
+            for coluna in range(1, 16):
+                planilha.cell(row=atual, column=coluna).fill = PatternFill(
+                    "solid", fgColor=BANDA)
+
+    escala_probabilidade(planilha, primeira, ultima, [5, 13])
+    coluna_odd(planilha, primeira, ultima, [6, 7, 14])
+    for atual in range(primeira, ultima + 1):
+        planilha.cell(row=atual, column=1).font = F_FORTE
+        planilha.cell(row=atual, column=1).alignment = CENTRO
+        planilha.cell(row=atual, column=2).font = F_FORTE
+        planilha.cell(row=atual, column=2).alignment = ESQUERDA
+        planilha.cell(row=atual, column=3).number_format = ODD
+        planilha.cell(row=atual, column=3).font = F_NOTA
+        planilha.cell(row=atual, column=3).alignment = CENTRO
+        planilha.cell(row=atual, column=4).font = F_CORPO
+        planilha.cell(row=atual, column=4).alignment = CENTRO
+        retorno = planilha.cell(row=atual, column=8)
+        retorno.number_format = "0.0%"
+        retorno.font = Font(name=FONTE, size=10, bold=True, color=VERMELHO)
+        retorno.alignment = CENTRO
+        planilha.cell(row=atual, column=9).font = F_NOTA
+        planilha.cell(row=atual, column=9).alignment = CENTRO
+        planilha.cell(row=atual, column=10).number_format = DATA_BR
+        planilha.cell(row=atual, column=10).font = F_NOTA
+        planilha.cell(row=atual, column=10).alignment = CENTRO
+        planilha.cell(row=atual, column=11).font = F_CORPO
+        planilha.cell(row=atual, column=11).alignment = ESQUERDA
+        planilha.cell(row=atual, column=12).font = F_CORPO
+        planilha.cell(row=atual, column=12).alignment = ESQUERDA
+        planilha.cell(row=atual, column=15).font = F_NOTA
+        planilha.cell(row=atual, column=15).alignment = CENTRO
+    planilha.conditional_formatting.add(f"O{primeira}:O{ultima}", CellIsRule(
+        operator="equal", formula=['"Média"'],
+        font=Font(name=FONTE, size=9, bold=True, color=AMBAR)))
+
+    larguras(planilha, [8, 16, 8, 8, 14, 10, 17, 14, 7, 11, 32, 24, 8, 10, 11])
+    planilha.freeze_panes = planilha.cell(row=primeira, column=3).coordinate
+    planilha.auto_filter.ref = f"A{linha + 1}:O{ultima}"
+    nota_rodape(planilha, ultima + 2,
+                "'Odd provável na casa' é a odd justa reduzida pela margem medida, uma "
+                "vez por perna — é uma estimativa do que a casa ofereceria, não uma "
+                "cotação real. O retorno esperado é negativo em todos os bilhetes, e "
+                "quanto mais alta a odd, pior: é assim que a conta funciona.", 15)
+    return planilha
+
+
+
+# ---------------------------------------------------------------------------
 # 4. Programa principal
 # ---------------------------------------------------------------------------
 
@@ -1283,9 +1642,25 @@ def main():
     livro = Workbook()
     livro.remove(livro.active)
 
+    # Margem real do mercado, medida nas temporadas recentes: é ela que define
+    # o quanto uma múltipla devolve à casa a cada perna adicionada.
+    recentes = contexto["base"]
+    recentes = recentes[recentes["jogada"] & (recentes["Season"] >= 2025)]
+    margem_mercado = float(ub.probabilidades_mercado(recentes)[1].mean())
+    print(f"Margem média do mercado (2025-2026): {100 * margem_mercado:.2f}%")
+
+    candidatos = candidatos_por_partida(previsoes)
+    melhores = melhores_por_partida(candidatos)
+    bilhetes = montar_bilhetes(candidatos, margem_mercado)
+    print(f"  {len(melhores)} partidas na vitrine e "
+          f"{bilhetes['Bilhete'].groupby([bilhetes['Rodada'], bilhetes['Bilhete']]).ngroups} "
+          f"bilhetes montados")
+
     aba_inicio(livro, previsoes, contexto, confiabilidade)
     aba_palpites(livro, previsoes)
     aba_rodadas(livro, previsoes)
+    aba_melhores(livro, melhores)
+    aba_bilhetes(livro, bilhetes, margem_mercado)
 
     aba_mercado(livro, previsoes, "Resultado 1X2", COR_RESULTADO,
                 "Cada desfecho com a sua probabilidade e a odd justa correspondente. "
@@ -1368,6 +1743,9 @@ def main():
                      encoding="utf-8")
     confiabilidade.to_csv(ub.DIR_TABELAS / "confiabilidade_mercados.csv", index=False,
                           encoding="utf-8")
+    melhores.to_csv(ub.DIR_TABELAS / "melhores_palpites.csv", index=False,
+                    encoding="utf-8")
+    bilhetes.to_csv(ub.DIR_TABELAS / "bilhetes.csv", index=False, encoding="utf-8")
 
 
 if __name__ == "__main__":
