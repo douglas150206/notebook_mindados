@@ -60,6 +60,9 @@ funciona como cache e nada é baixado de novo.
 ├── requirements.txt           versões fixadas
 ├── mineracao_bets.ipynb       notebook principal (executado, com saídas salvas)
 ├── brasileirao_2026.ipynb     notebook complementar do Brasileirão 2026
+├── aulas/
+│   └── aula07_knn/            Aula 7 (KNN) resolvida: notebook, relatório em PDF,
+│                              figuras/, resultados/ e gerar_relatorio.py
 ├── src/
 │   ├── utils.py               download, limpeza, Elo, médias móveis, métricas
 │   └── utils_brasileirao.py   modelo de gols (Poisson/Dixon-Coles) e cálculo de green
@@ -180,6 +183,22 @@ muda o preço pago por essa chance.
 > inclusive apostando apenas onde o modelo enxerga vantagem — filtrar por valor
 > esperado **piora** o retorno, porque quando o modelo discorda muito do mercado
 > em geral quem está errado é o modelo.
+
+## Aula 7 — KNN (exercícios da disciplina)
+
+`aulas/aula07_knn/Aula7_KNN_resolvido.ipynb` é o notebook da Aula 7 (KNN) com as
+**Atividades 1 a 11 resolvidas**, cada uma com uma célula de interpretação. A
+Atividade 11 é a atividade avaliativa (KNN com a base Iris). O relatório em PDF
+é gerado a partir das figuras e dos resultados que o notebook salva:
+
+```bash
+cd aulas/aula07_knn
+jupyter nbconvert --to notebook --execute --inplace Aula7_KNN_resolvido.ipynb
+python gerar_relatorio.py --aluno "Seu Nome"   # gera relatorio_aula7_knn.pdf
+```
+
+O exemplo do Titanic (seção 9 e Atividade 10) baixa a base pelo `seaborn` na
+primeira execução, então precisa de internet.
 
 ## Reprodutibilidade
 
