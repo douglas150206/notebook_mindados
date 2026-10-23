@@ -28,6 +28,5 @@ ipykernel==6.29.5
 openpyxl==3.1.5
 pyarrow==26.0.0
 
-# Aula 7 (KNN): base Titanic e relatório em PDF
-seaborn==0.13.2
+# Aula 7 (KNN): relatório em PDF
 reportlab==4.2.5
